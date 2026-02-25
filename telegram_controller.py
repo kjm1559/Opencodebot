@@ -113,18 +113,31 @@ def process_output_line(line: str, chat_id: str) -> Optional[str]:
         elif obj.get("type") == "completed":
             return "Operation completed successfully."
         elif obj.get("type") == "tool_use":
-            # Extract tool name and inputs/outputs from the opencode structure
-            # opencode structures: "part" contains a "tool" field and "state" contains "input" and "output"
+            # Extract tool name and inputs/outputs with proper status handling
+            tool_name = "Unknown tool"
+            inputs = {}
+            outputs = {}
+            status = ""
+            
+            # Try to extract from part object first (common in opencode)
             part = obj.get("part", {})
-            tool_name = part.get("tool", "Unknown tool")
+            if part:
+                tool_name = part.get("tool", "Unknown tool")
+                # Handle state dictionary for status and input
+                state = part.get("state", {})
+                status = state.get("status", "")
+                inputs = state.get("input", {})
+                outputs = state.get("output", {})
+            else:
+                # Fall back to direct fields if no part object
+                tool_name = obj.get("tool_name", obj.get("tool", "Unknown tool"))
+                inputs = obj.get("input", {})
+                outputs = obj.get("output", {})
             
-            # Extract input and output from state within part
-            state = part.get("state", {})
-            inputs = state.get("input", {})
-            outputs = state.get("output", {})
-            
-            # Format tool usage information in requested format: [tool_name]:\ninput_data\noutput_data
+            # Format tool usage information with status in markdown code block
             result = f"[{tool_name}]:\n"
+            if status:
+                result += f"Status: {status}\n"
             result += f"Input: {json.dumps(inputs, indent=2)}\n"
             result += f"Output: {json.dumps(outputs, indent=2)}\n"
             return result.strip()
