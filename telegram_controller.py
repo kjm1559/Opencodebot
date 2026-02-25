@@ -113,10 +113,22 @@ def process_output_line(line: str, chat_id: str) -> Optional[str]:
         elif obj.get("type") == "completed":
             return "Operation completed successfully."
         elif obj.get("type") == "tool_use":
-            # Extract tool name and inputs/outputs
-            tool_name = obj.get("tool_name", "Unknown tool")
-            inputs = obj.get("input", {})
-            outputs = obj.get("output", {})
+            # Extract tool name and inputs/outputs - handle both flat structure and nested "part" structure
+            tool_name = "Unknown tool"
+            inputs = {}
+            outputs = {}
+            
+            # Try to extract from part object first (common in opencode)
+            part = obj.get("part", {})
+            if part:
+                tool_name = part.get("tool", "Unknown tool")
+                inputs = part.get("input", {})
+                outputs = part.get("output", {})
+            else:
+                # Fall back to direct fields if no part object
+                tool_name = obj.get("tool_name", obj.get("tool", "Unknown tool"))
+                inputs = obj.get("input", {})
+                outputs = obj.get("output", {})
             
             # Format tool usage information in requested format: [tool_name]:\ninput_data\noutput_data
             result = f"[{tool_name}]:\n"
