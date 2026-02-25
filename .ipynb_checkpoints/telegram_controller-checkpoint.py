@@ -4,58 +4,15 @@ Telegram Controller for OpenCode
 This bot controls opencode via CLI commands through Telegram.
 """
 
-import os
 import asyncio
 import re
 import json
-import subprocess
-import sys
-from typing import List
-import logging
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Environment variables
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-
-# Bot setup
-if not TELEGRAM_BOT_TOKEN:
-    logger.error("TELEGRAM_BOT_TOKEN environment variable not set")
-    sys.exit(1)
-
-try:
-    import telebot
-    bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
-except ImportError as e:
-    logger.error(f"Failed to import telebot: {e}")
-    sys.exit(1)
-
-# In-memory session storage (per chat)
-session_store = {}
 
 def escape_md(text):
     return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
-def process_output_line(line: str, chat_id: str) -> str:
-    """Process a single line of opencode output and format it for Telegram."""
-    try:
-        # Check if line is JSON
-        if not line:
-            return ""
-        obj = json.loads(line)
-        
-        if obj.get("type") == "text":
-            # Extract text content
-            text_content = obj.get("text", "")
-            # Try to get text from part.text if it exists
-            part = obj.get("part", {})
-            if part:
-                text_content = part.get("text", text_content)
-            return text_content
-            
+    # ... existing imports ...
+
         elif obj.get("type") == "tool_use":
             # Extract tool name and inputs/outputs with proper status handling
             tool_name = "Unknown tool"
@@ -137,14 +94,14 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             if output:
                 logger.info(f"Raw opencode output line: {output.strip()}")
                 formatted = process_output_line(output.strip(), chat_id)
-                if formatted and formatted.strip():  # Fixed: also check that formatted is not empty
+                if formatted is not None and formatted.strip():  # Fixed: also check that formatted is not empty
                     # Send formatted message to Telegram
                     try:
                         logger.info(f"Sending to Telegram: {formatted[:100]}...")  # Log first 100 chars
                         bot.send_message(chat_id, formatted)
                     except Exception as e:
                         logger.error(f"Error sending message to Telegram: {e}")
-                elif formatted:
+                elif formatted is not None:
                     logger.warning("Skipping empty formatted message")
         
         # Check for errors
@@ -263,56 +220,10 @@ def handle_message(message):
         logger.error(f"Error in handle_message: {e}")
         bot.reply_to(message, f"Error occurred: {str(e)}")
 
-def run_opencode_command(args: List[str]) -> subprocess.CompletedProcess:
-    """Run an opencode command and return the result."""
-    try:
-        result = subprocess.run(
-            ["opencode"] + args,
-            capture_output=True,
-            text=True,
-            check=True
-        )
-        return result
-    except subprocess.CalledProcessError as e:
-        logger.error(f"opencode command failed: {e}")
-        raise e
-
-def format_session_list(sessions_data) -> str:
-    """Format session list for Telegram."""
-    if not sessions_data:
-        return "No sessions available."
-    
-    formatted = "Available Sessions:\n"
-    for session in sessions_data:
-        formatted += f"- {session['id']}\n"
-    return formatted
-
-def is_valid_session_id(session_id: str, chat_id: str) -> bool:
-    """Check if a session ID is valid by comparing against session list."""
-    try:
-        result = run_opencode_command(["session", "list", "--format", "json"])
-        sessions_data = json.loads(result.stdout)
-        session_ids = [s["id"] for s in sessions_data]
-        return session_id in session_ids
-    except Exception:
-        return False  # If we can't validate, assume it might be valid
-
-def set_current_session_id(chat_id: str, session_id: str) -> None:
-    """Set the current session ID for a chat."""
-    if chat_id not in session_store:
-        session_store[chat_id] = {}
-    session_store[chat_id]["current_session_id"] = session_id
-
-def get_current_session_id(chat_id: str) -> str:
-    """Get the current session ID for a chat."""
-    if chat_id not in session_store:
-        return None
-    return session_store[chat_id].get("current_session_id")
-
 def main():
     """Main entry point."""
     logger.info("Starting OpenCode Telegram Controller")
-    if not TELEGRAM_BOT_TOKEN:
+    if not BOT_TOKEN:
         logger.error("Telegram bot token not found")
         sys.exit(1)
     try:

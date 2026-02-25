@@ -1,25 +1,28 @@
 # OpenCode Telegram Controller
 
-A Telegram bot that controls the OpenCode CLI tool.
+A Telegram bot that controls OpenCode via CLI commands.
 
 ## Features
 
-- Manage OpenCode sessions via Telegram commands
-- Execute `opencode run` commands
-- Parse JSON/JSONL outputs
-- Stream filtered results back to Telegram
-- Automatically manage and track the current session
+- Execute opencode commands via Telegram
+- Manage sessions per chat
+- Parse and format JSON/JSONL outputs from opencode
+- Display tool_use messages with only input information in markdown code blocks
+- Handle text messages with proper nested structure extraction
+- Provide user feedback during command execution
+- Include proper logging and error handling
 
 ## Setup
 
-1. Install required dependencies:
+1. Install the required packages:
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Set your Telegram bot token as an environment variable:
+2. Set environment variables:
 ```bash
 export TELEGRAM_BOT_TOKEN="your_telegram_bot_token_here"
+export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional, for restricting to specific chat
 ```
 
 3. Run the bot:
@@ -34,27 +37,42 @@ python telegram_controller.py
 - `/current_session` - Show the current session
 - Send any message to run it with opencode
 
-## Architecture
+## Usage
 
-The bot consists of several components:
+1. Start the bot and send any message to begin using opencode
+2. If no session is set, a new session will be created automatically
+3. All output from opencode will be processed and sent to Telegram
+4. Tool_use messages are formatted with only input information in markdown code blocks
+5. Text messages are properly extracted from their nested structure
 
-1. **Telegram Bot Layer**
-   - Handles commands and user messages
-   - Sends responses back to Telegram
+## Requirements
 
-2. **Session Manager**
-   - Stores and retrieves `current_session_id`
-   - Interfaces with `opencode session list`
+- Python 3.6+
+- opencode CLI installed and in PATH
+- telebot library
 
-3. **OpenCode CLI Adapter**
-   - Executes CLI commands:
-     - `opencode session list --format json`
-     - `opencode run --session ... --format json`
-     - `opencode run --continue ... --format json`
-   - Parses JSON and JSONL outputs
+## Example Output
 
-4. **Output Processor**
-   - Filters out:
-     - `type == "step_start"`
-     - `type == "step_finish"`
-   - Forwards remaining entries to Telegram
+For tool_use messages:
+```
+[tool_name]:
+Status: success
+```
+```json
+{
+  "param1": "value1",
+  "param2": "value2"
+}
+```
+
+For text messages:
+```
+Hello world!
+```
+
+## Error Handling
+
+- Invalid session IDs are rejected
+- Command execution errors are logged and sent to Telegram
+- Empty messages are skipped
+- JSON parsing errors are handled gracefully

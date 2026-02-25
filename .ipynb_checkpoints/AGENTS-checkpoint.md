@@ -144,7 +144,6 @@ Example:
 {"type":"step_start", ...}
 {"type":"text","text":"Hello"}
 {"type":"step_finish", ...}
-{"type":"tool_use","tool_name":"example_tool","input":{"param1":"value1"},"output":{"result":"success"}}
 ```
 
 ### Filtering Rules
@@ -154,46 +153,6 @@ DO NOT send entries where:
 - type == "step_finish"
 
 Send everything else to Telegram.
-
-### Processing Rules
-
-- `type == "text"`: Send only the text content (not the full JSON object)
-- `type == "tool_use"`: Send tool name, inputs, and outputs in structured format
-- Other types: Send formatted JSON representation
-
-### Processing Algorithm
-
-Pseudo-code:
-
-```python
-for line in stdout_stream:
-    obj = json.loads(line)
-
-    if obj["type"] in ["step_start", "step_finish"]:
-        continue
-
-    send_to_telegram(format_message(obj))
-```
-
-### Error Handling
-
-In case of asynchronous execution errors:
-- Handle coroutine execution properly in message handlers
-- Ensure stream_opencode_output is called without incorrect asyncio.run() calls
-
-### Filtering Rules
-
-DO NOT send entries where:
-- type == "step_start"
-- type == "step_finish"
-
-Send everything else to Telegram.
-
-### Processing Rules
-
-- `type == "text"`: Send only the text content (not the full JSON object)
-- `type == "tool_use"`: Send tool name, inputs, and outputs in structured format
-- Other types: Send formatted JSON representation
 
 ### Processing Algorithm
 
@@ -314,42 +273,6 @@ session_store = {
 - Streaming partial responses
 - Inline session selection buttons
 - Persistent DB-backed session storage
-
-# 13. Implementation Notes
-- All commands and message types from specification have been implemented
-- Session storage is in-memory (per chat) - for production use, implement database-backed storage
-- Environment variables TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are supported
-- User feedback "Executing command... Please wait." is shown during command execution
-- All filtering rules from specification are implemented (step_start/step_finish messages filtered out)
-- Tool_use messages are formatted with tool name, inputs, and outputs as specified
-- Tool_use messages display in format: [tool_name]:\nStatus: {status}\n```json\nInput: {input_data}\n```\n with markdown code block formatting
-- Text messages extract content from part.text field and display as string
-- Each opencode output line is sent as a single message to Telegram
-- Comprehensive logging added for all command execution and output processing
-- Empty message prevention implemented to avoid Telegram API errors
-- Robust tool name extraction handles both nested and flat message structures
-- Enhanced status information handling for tool_use messages
-- Text messages properly extract content from nested part.text structure
-- Session management properly implemented with in-memory storage per chat
-- Process output line function handles all message types correctly
-- Error handling for all subprocess operations implemented
-- Proper typing annotations added for all functions
-
-# 13. Implementation Notes
-- All commands and message types from specification have been implemented
-- Session storage is in-memory (per chat) - for production use, implement database-backed storage
-- Environment variables TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are supported
-- User feedback "Executing command... Please wait." is shown during command execution
-- All filtering rules from specification are implemented (step_start/step_finish messages filtered out)
-- Tool_use messages are formatted with tool name, inputs, and outputs as specified
-- Tool_use messages display in format: [tool_name]:\nStatus: {status}\n```json\nInput: {input_data}\n```\n with markdown code block formatting
-- Text messages extract content from part.text field and display as string
-- Each opencode output line is sent as a single message to Telegram
-- Comprehensive logging added for all command execution and output processing
-- Empty message prevention implemented to avoid Telegram API errors
-- Robust tool name extraction handles both nested and flat message structures
-- Enhanced status information handling for tool_use messages
-- Text messages properly extract content from nested part.text structure
 
 ⸻
 
