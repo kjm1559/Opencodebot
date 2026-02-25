@@ -144,7 +144,7 @@ def process_output_line(line: str, chat_id: str) -> Optional[str]:
             result = f"[{tool_name}]:\n"
             if status:
                 result += f"Status: {status}\n"
-            result += f"```json\n"
+            result += f"```\n"
             result += f"Input: {json.dumps(inputs, indent=2)}\n"
             result += f"```\n"
             return result.strip()
