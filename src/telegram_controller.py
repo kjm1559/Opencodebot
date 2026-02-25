@@ -175,7 +175,7 @@ def get_current_session_id(chat_id: str) -> str:
     """Get the current session ID for a chat."""
     if chat_id not in session_store:
         return None
-    return session_store[chat_id].get("current_session_id")  # type: ignore
+    return session_store[chat_id].get("current_session_id")
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
