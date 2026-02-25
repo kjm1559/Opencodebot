@@ -322,12 +322,14 @@ session_store = {
 - User feedback "Executing command... Please wait." is shown during command execution
 - All filtering rules from specification are implemented (step_start/step_finish messages filtered out)
 - Tool_use messages are formatted with tool name, inputs, and outputs as specified
-- Tool_use messages display in format: [tool_name]:\nInput: {input_data}\nOutput: {output_data}\n with code block formatting
-- Text messages are displayed verbatim as received from opencode
+- Tool_use messages display in format: [tool_name]:\nStatus: {status}\n```json\nInput: {input_data}\n```\n with markdown code block formatting
+- Text messages extract content from part.text field and display as string
 - Each opencode output line is sent as a single message to Telegram
 - Comprehensive logging added for all command execution and output processing
 - Empty message prevention implemented to avoid Telegram API errors
 - Robust tool name extraction handles both nested and flat message structures
+- Enhanced status information handling for tool_use messages
+- Text messages properly extract content from nested part.text structure
 
 ⸻
 
