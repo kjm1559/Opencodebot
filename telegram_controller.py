@@ -154,6 +154,7 @@ def format_message(obj: dict) -> str:
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
     try:
+        logger.info(f"Executing opencode command with args: {command_args}")
         process = subprocess.Popen(
             ["opencode"] + command_args,
             stdout=subprocess.PIPE,
@@ -172,6 +173,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 if formatted is not None:  # Fixed: was checking truthy instead of None
                     # Send formatted message to Telegram
                     try:
+                        logger.info(f"Sending to Telegram: {formatted[:100]}...")  # Log first 100 chars
                         bot.send_message(chat_id, formatted)
                     except Exception as e:
                         logger.error(f"Error sending message to Telegram: {e}")
@@ -187,6 +189,8 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         if return_code != 0:
             logger.error(f"opencode command exited with code {return_code}")
             bot.send_message(chat_id, f"Command failed with exit code {return_code}")
+        else:
+            logger.info("Command completed successfully")
             
     except Exception as e:
         logger.error(f"Error streaming opencode output: {e}")
