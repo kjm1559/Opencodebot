@@ -315,6 +315,17 @@ session_store = {
 - Inline session selection buttons
 - Persistent DB-backed session storage
 
+# 13. Implementation Notes
+- All commands and message types from specification have been implemented
+- Session storage is in-memory (per chat) - for production use, implement database-backed storage
+- Environment variables TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are supported
+- User feedback "Executing command... Please wait." is shown during command execution
+- All filtering rules from specification are implemented (step_start/step_finish messages filtered out)
+- Tool_use messages are formatted with tool name, inputs, and outputs as specified
+- Tool_use messages display in format: [tool_name]:\nInput: {input_data}\nOutput: {output_data}\n with code block formatting
+- Text messages are displayed verbatim as received from opencode
+- Each opencode output line is sent as a single message to Telegram
+
 ⸻
 
 End of AGENTS.md

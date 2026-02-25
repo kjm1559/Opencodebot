@@ -118,12 +118,10 @@ def process_output_line(line: str, chat_id: str) -> Optional[str]:
             inputs = obj.get("input", {})
             outputs = obj.get("output", {})
             
-            # Format tool usage information - only showing tool name, inputs and outputs
-            result = f"Tool: {tool_name}\n"
-            if inputs:
-                result += f"Input: {json.dumps(inputs, indent=2)}\n"
-            if outputs:
-                result += f"Output: {json.dumps(outputs, indent=2)}\n"
+            # Format tool usage information in requested format: [tool_name]:\ninput_data\noutput_data
+            result = f"[{tool_name}]:\n"
+            result += f"Input: {json.dumps(inputs, indent=2)}\n"
+            result += f"Output: {json.dumps(outputs, indent=2)}\n"
             return result.strip()
         else:
             # For unknown types, send raw message
@@ -171,7 +169,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 break
             if output:
                 formatted = process_output_line(output.strip(), chat_id)
-                if formatted:
+                if formatted is not None:  # Fixed: was checking truthy instead of None
                     # Send formatted message to Telegram
                     try:
                         bot.send_message(chat_id, formatted)
@@ -179,7 +177,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                         logger.error(f"Error sending message to Telegram: {e}")
         
         # Check for errors
-        stderr_output = process.stderr.read()
+        stderr_output = process.stderr.read() if process.stderr else ""
         if stderr_output:
             logger.error(f"opencode stderr: {stderr_output}")
             bot.send_message(chat_id, f"Error: {stderr_output}")
