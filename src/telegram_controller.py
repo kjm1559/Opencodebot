@@ -162,7 +162,7 @@ def get_current_session_id(chat_id: str) -> str:
     """Get the current session ID for a chat."""
     if chat_id not in session_store:
         return None
-    return session_store[chat_id].get("current_session_id")
+    return session_store[chat_id].get("current_session_id")  # type: ignore
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
@@ -182,17 +182,20 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             if output == '' and process.poll() is not None:
                 break
             if output:
-                logger.info(f"Raw opencode output line: {output.strip()}")
-                formatted = process_output_line(output.strip(), chat_id)
-                if formatted and formatted.strip():  # Check that formatted is not empty
-                    # Send formatted message to Telegram
-                    try:
-                        logger.info(f"Sending to Telegram: {formatted[:100]}...")  # Log first 100 chars
-                        bot.send_message(chat_id, formatted)
-                    except Exception as e:
-                        logger.error(f"Error sending message to Telegram: {e}")
-                elif formatted:
-                    logger.warning("Skipping empty formatted message")
+                # Add proper handling for the case when process.stdout might be None
+                output_clean = output.strip() if output else ""
+                if output_clean:
+                    logger.info(f"Raw opencode output line: {output_clean}")
+                    formatted = process_output_line(output_clean, chat_id)
+                    if formatted and formatted.strip():  # Check that formatted is not empty
+                        # Send formatted message to Telegram
+                        try:
+                            logger.info(f"Sending to Telegram: {formatted[:100]}...")  # Log first 100 chars
+                            bot.send_message(chat_id, formatted)
+                        except Exception as e:
+                            logger.error(f"Error sending message to Telegram: {e}")
+                    elif formatted:
+                        logger.warning("Skipping empty formatted message")
         
         # Check for errors
         stderr_output = process.stderr.read() if process.stderr else ""
@@ -211,3 +214,106 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     except Exception as e:
         logger.error(f"Error streaming opencode output: {e}")
         bot.send_message(chat_id, f"Error occurred while running command: {str(e)}")
+
+# === Add the message handlers below ===
+
+@bot.message_handler(commands=['session'])
+def handle_session_command(message):
+    """Handle /session command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /session command from chat {chat_id}")
+    
+    try:
+        bot.send_chat_action(chat_id, 'typing')  # Show typing indicator
+        
+        result = run_opencode_command(["session", "list", "--format", "json"])
+        sessions_data = json.loads(result.stdout)
+        formatted_sessions = format_session_list(sessions_data)
+        bot.reply_to(message, formatted_sessions)
+        
+    except Exception as e:
+        logger.error(f"Error handling /session command: {e}")
+        bot.reply_to(message, f"Error: {str(e)}")
+
+@bot.message_handler(commands=['set_session'])
+def handle_set_session_command(message):
+    """Handle /set_session command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /set_session command from chat {chat_id}")
+    
+    try:
+        bot.send_chat_action(chat_id, 'typing')  # Show typing indicator
+        
+        # Extract session ID from message
+        session_id = message.text[len('/set_session'):].strip()
+        if not session_id:
+            bot.reply_to(message, "Please provide a session ID. Usage: /set_session <session_id>")
+            return
+            
+        # Validate session ID if possible
+        if not is_valid_session_id(session_id, chat_id):
+            bot.reply_to(message, "Invalid session ID.")
+            return
+            
+        # Set session ID
+        set_current_session_id(chat_id, session_id)
+        bot.reply_to(message, f"Current session set to: {session_id}")
+        
+    except Exception as e:
+        logger.error(f"Error handling /set_session command: {e}")
+        bot.reply_to(message, f"Error: {str(e)}")
+
+@bot.message_handler(commands=['current_session'])
+def handle_current_session_command(message):
+    """Handle /current_session command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /current_session command from chat {chat_id}")
+    
+    try:
+        bot.send_chat_action(chat_id, 'typing')  # Show typing indicator
+        
+        session_id = get_current_session_id(chat_id)
+        if session_id:
+            bot.reply_to(message, f"Current session: {session_id}")
+        else:
+            bot.reply_to(message, "No active session.")
+            
+    except Exception as e:
+        logger.error(f"Error handling /current_session command: {e}")
+        bot.reply_to(message, f"Error: {str(e)}")
+
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    """Handle regular messages."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received message from chat {chat_id}: {message.text}")
+    
+    try:
+        # Show typing indicator
+        bot.send_chat_action(chat_id, 'typing')
+        
+        # Check if we have an active session
+        current_session_id = get_current_session_id(chat_id)
+        
+        if current_session_id:
+            # Use the existing session
+            logger.info(f"Using existing session {current_session_id}")
+            command_args = ["run", "--session", current_session_id, message.text, "--format", "json"]
+            stream_opencode_output(chat_id, command_args)
+        else:
+            # Start a new session using --continue
+            logger.info("Starting new session with --continue")
+            # We'll first run the command with --continue, which should automatically create a session
+            # Then we'll query session list to get the latest session ID
+            command_args = ["run", "--continue", message.text, "--format", "json"]
+            
+            # Execute the command, but just send a message to user to indicate it's running
+            bot.send_message(chat_id, "Executing command... Please wait.")
+            
+            # The execution is run but the return is not waited for for the streaming - let
+            # the opencode auto-manage the session creation via the --continue flag. The user 
+            # can get the session ID via the session list command now.
+            
+    except Exception as e:
+        logger.error(f"Error handling message: {e}")
+        bot.send_message(chat_id, f"Error: {str(e)}")

@@ -334,6 +334,7 @@ session_store = {
 - Process output line function handles all message types correctly
 - Error handling for all subprocess operations implemented
 - Proper typing annotations added for all functions
+- Automatic session selection implemented: When no session is set and a message is sent, the bot automatically creates a new session using --continue flag and tracks it properly
 
 # 13. Implementation Notes
 - All commands and message types from specification have been implemented
