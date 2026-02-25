@@ -1,31 +1,46 @@
 # OpenCode Telegram Controller
 
-A Telegram bot that controls OpenCode via CLI commands.
+A Telegram bot that controls the OpenCode CLI via Telegram commands with intelligent typing indicators and session management.
 
 ## Features
 
-- Execute opencode commands via Telegram
-- Manage sessions per chat
-- Parse and format JSON/JSONL outputs from opencode
-- Display tool_use messages with only input information in markdown code blocks
-- Handle text messages with proper nested structure extraction
-- Provide user feedback during command execution
-- Include proper logging and error handling
-- Automatic session creation when no session is set
-- Filter out step_start and step_finish messages
-- Dot-only escaping for Telegram MarkdownV2 compatibility
+- **Session Management**: Create, list, set, and reset sessions
+- **Command Execution**: Run OpenCode commands with real-time streaming output
+- **Intelligent Typing Indicators**: Typing action stays active until command completion
+- **Error Handling**: Comprehensive error reporting and logging
+- **JSON Output Processing**: Properly handles and filters OpenCode JSONL output
+
+## Commands
+
+### Session Management
+- `/session` - List available sessions
+- `/set_session <id>` - Set current session
+- `/current_session` - Show current session
+- `/new_session` - Create new session
+- `/compact <session_id>` - Compact current session
+- `/reset` - Clear current session
+
+### Typing Control
+- Typing indicators sent only at command start
+- Remains active until command completion
+- "Command completed successfully" signals typing indicator removal
+
+## Requirements
+
+- Python 3.9+
+- `opencode` CLI installed and accessible
+- Telegram bot token in `TELEGRAM_BOT_TOKEN` environment variable
 
 ## Setup
 
-1. Install the required packages:
+1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
 2. Set environment variables:
 ```bash
-export TELEGRAM_BOT_TOKEN="your_telegram_bot_token_here"
-export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional, for restricting to specific chat
+export TELEGRAM_BOT_TOKEN="your_bot_token_here"
 ```
 
 3. Run the bot:
@@ -33,27 +48,9 @@ export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional, for restrictin
 python main.py
 ```
 
-## Commands
+## Implementation Details
 
-- `/session` - List all available sessions
-- `/set_session <session_id>` - Set the current session
-- `/current_session` - Show the current session
-- Send any message to run it with opencode
-
-## Usage
-
-1. Start the bot and send any message to begin using opencode
-2. If no session is set, a new session will be created automatically
-3. All output from opencode will be processed and sent to Telegram
-4. Tool_use messages are formatted with only input information in markdown code blocks
-5. Text messages are properly extracted from their nested structure
-6. step_start and step_finish messages are automatically filtered out
-
-## Requirements
-
-- Python 3.6+
-- opencode CLI installed and in PATH
-- telebot library
+The bot uses JSON formatting for all OpenCode commands and filters out `step_start`/`step_finish` messages. It streams output to Telegram in real-time and properly handles large outputs with error management.
 
 ## Folder Structure
 
@@ -64,50 +61,11 @@ opencode-telegram-bot/
 ├── test/
 │   └── test_telegram_controller.py # Unit tests
 ├── main.py                        # Entry point script
-├── run_bot.sh                     # Execution script
 ├── requirements.txt               # Python dependencies
 ├── README.md                      # This documentation
 └── AGENTS.md                      # Implementation specification
 ```
 
-## Example Output
+## License
 
-For tool_use messages:
-```
-[tool_name]:
-Status: success
-```
-```json
-{
-  "param1": "value1",
-  "param2": "value2"
-}
-```
-
-For text messages:
-```
-Hello world!
-```
-
-## Error Handling
-
-- Invalid session IDs are rejected
-- Command execution errors are logged and sent to Telegram
-- Empty messages are skipped
-- JSON parsing errors are handled gracefully
-- Automatic fallback to new session creation when needed
-
-## Development
-
-### Implementation Status
-- All syntax errors have been fixed
-- Complete functionality implemented
-- Infinite loop concerns resolved
-- All unit tests pass (10/10)
-
-### Key Improvements
-- Robust session management with automatic fallback
-- Proper filtering of step_start/step_finish messages
-- Dot-only escaping for Telegram MarkdownV2 compatibility
-- Comprehensive error handling and logging
-- Performance optimizations
+MIT
