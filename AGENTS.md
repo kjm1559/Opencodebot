@@ -305,6 +305,8 @@ session_store = {
 | `/session` | `opencode session list --format json` |
 | `/set_session sess_123` | (Store session internally only) |
 | `/current_session` | (Read current session internally) |
+| `/new_session` | `opencode run --continue "new session" --format json` |
+| `/compact` | `opencode session compact <session_id>` |
 | Normal message (with session) | `opencode run --session "sess_123" "message" --format json` |
 | Normal message (no session) | `opencode run --continue "message" --format json` → `opencode session list --format json` → set latest session as current |
 
@@ -380,10 +382,38 @@ opencode-telegram-bot/
 # 15. Future Enhancements (Optional)
 - /new_session
 - /delete_session
+- /compact
 - Streaming partial responses
 - Inline session selection buttons
 - Persistent DB-backed session storage
 
-⸻
+# 16. New Features Implemented
+## 3.4 /new_session
+### Behavior
+- Create a new session using `opencode run --continue`
+- Reply with the newly created session ID
+- Set this session as the current session for the chat
+- If session creation fails, reply with error message
 
-End of AGENTS.md
+## 3.5 /compact
+### Behavior
+- Run compaction on the current session using `opencode session compact <session_id>`
+- If no session is active, reply with "No active session"
+- If compaction fails, reply with error message
+- Reply with status of compaction operation
+
+## 3.6 /reset
+### Behavior
+- Clear the current session ID for the chat
+- Reply with confirmation message
+- All subsequent commands will start a new session until explicitly set
+
+# 17. Changes Implemented
+
+## 17.1 Typing Action Control
+The typing action control has been modified:
+- Removed typing indicators from all command handlers (`/session`, `/set_session`, `/current_session`)
+- Added typing indicator at the beginning of `stream_opencode_output` function
+- Now all long-running commands will show typing action until the process completion
+
+The user request was to change when the typing indicator is cleared, making it stay active until "Command completed successfully" is printed (which is when the process finishes).

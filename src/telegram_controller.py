@@ -180,6 +180,8 @@ def get_current_session_id(chat_id: str) -> str:
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
     try:
+        # Send typing indicator at the start of command execution
+        bot.send_chat_action(chat_id, 'typing')
         logger.info(f"Executing opencode command with args: {command_args}")
         process = subprocess.Popen(
             ["opencode"] + command_args,
@@ -243,9 +245,6 @@ def handle_session_command(message):
     logger.info(f"Received /session command from chat {chat_id}")
     
     try:
-        # Show typing indicator
-        bot.send_chat_action(chat_id, 'typing')  # Show typing indicator
-        
         result = run_opencode_command(["session", "list", "--format", "json"])
         sessions_data = json.loads(result.stdout)
         formatted_sessions = format_session_list(sessions_data)
@@ -264,9 +263,6 @@ def handle_set_session_command(message):
     logger.info(f"Received /set_session command from chat {chat_id}")
     
     try:
-        # Show typing indicator
-        bot.send_chat_action(chat_id, 'typing')  # Show typing indicator
-        
         # Extract session ID from message
         session_id = message.text[len('/set_session'):].strip()
         if not session_id:
@@ -297,9 +293,6 @@ def handle_current_session_command(message):
     logger.info(f"Received /current_session command from chat {chat_id}")
     
     try:
-        # Show typing indicator
-        bot.send_chat_action(chat_id, 'typing')  # Show typing indicator
-        
         session_id = get_current_session_id(chat_id)
         if session_id:
             escaped_message = escape_markdown_v2(f"Current session: {session_id}")
@@ -313,14 +306,104 @@ def handle_current_session_command(message):
         escaped_error = escape_markdown_v2(f"Error: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
+@bot.message_handler(commands=['new_session'])
+def handle_new_session_command(message):
+    """Handle /new_session command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /new_session command from chat {chat_id}")
+    
+    try:
+        # Create a new session using --continue
+        command_args = ["run", "--continue", "new session", "--format", "json"]
+        escaped_message = escape_markdown_v2("Creating new session... Please wait.")
+        bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
+        
+        # Execute the command
+        result = run_opencode_command(["run", "--continue", "new session", "--format", "json"])
+        
+        # Get the session from the output
+        # Note: For a new session, this should return JSON with session information
+        # For simplicity, we'll try to parse and find session ID in the output
+        sessions_data = json.loads(result.stdout)
+        session_id = None
+        if isinstance(sessions_data, list) and len(sessions_data) > 0:
+            session_id = sessions_data[0].get('id')
+            
+        if session_id:
+            set_current_session_id(chat_id, session_id)
+            escaped_message = escape_markdown_v2(f"New session created and set: {session_id}")
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        else:
+            # Fallback to getting latest session from session list
+            try:
+                result = run_opencode_command(["session", "list", "--format", "json"])
+                sessions_data = json.loads(result.stdout)
+                if sessions_data:
+                    latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
+                    selected_session_id = latest_session['id']
+                    set_current_session_id(chat_id, selected_session_id)
+                    escaped_message = escape_markdown_v2(f"New session created and set: {selected_session_id}")
+                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                else:
+                    escaped_message = escape_markdown_v2("New session created but unable to determine session ID.")
+                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+            except Exception:
+                escaped_message = escape_markdown_v2("New session created but unable to determine session ID.")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                
+    except Exception as e:
+        logger.error(f"Error handling /new_session command: {e}")
+        escaped_error = escape_markdown_v2(f"Error creating new session: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['compact'])
+def handle_compact_command(message):
+    """Handle /compact command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /compact command from chat {chat_id}")
+    
+    try:
+        # Check if we have an active session
+        session_id = get_current_session_id(chat_id)
+        if not session_id:
+            escaped_message = escape_markdown_v2("No active session.")
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+            return
+            
+        # Compact the current session
+        command_args = ["session", "compact", session_id]
+        result = run_opencode_command(command_args)
+        
+        escaped_message = escape_markdown_v2(f"Session compacted successfully: {session_id}")
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        
+    except Exception as e:
+        logger.error(f"Error handling /compact command: {e}")
+        escaped_error = escape_markdown_v2(f"Error compacting session: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['reset'])
+def handle_reset_command(message):
+    """Handle /reset command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /reset command from chat {chat_id}")
+    
+    try:
+        # Clear the current session ID
+        set_current_session_id(chat_id, None)
+        escaped_message = escape_markdown_v2("Session has been reset. All session data cleared.")
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        
+    except Exception as e:
+        logger.error(f"Error handling /reset command: {e}")
+        escaped_error = escape_markdown_v2(f"Error resetting session: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     """Handle regular messages."""
     chat_id = str(message.chat.id)
     logger.info(f"Received message from chat {chat_id}: {message.text}")
-    
-    # Show typing indicator
-    bot.send_chat_action(chat_id, 'typing')
     
     # Check if we have an active session
     current_session_id = get_current_session_id(chat_id)
