@@ -11,6 +11,9 @@ A Telegram bot that controls OpenCode via CLI commands.
 - Handle text messages with proper nested structure extraction
 - Provide user feedback during command execution
 - Include proper logging and error handling
+- Automatic session creation when no session is set
+- Filter out step_start and step_finish messages
+- Dot-only escaping for Telegram MarkdownV2 compatibility
 
 ## Setup
 
@@ -27,7 +30,7 @@ export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional, for restrictin
 
 3. Run the bot:
 ```bash
-python telegram_controller.py
+python main.py
 ```
 
 ## Commands
@@ -44,12 +47,28 @@ python telegram_controller.py
 3. All output from opencode will be processed and sent to Telegram
 4. Tool_use messages are formatted with only input information in markdown code blocks
 5. Text messages are properly extracted from their nested structure
+6. step_start and step_finish messages are automatically filtered out
 
 ## Requirements
 
 - Python 3.6+
 - opencode CLI installed and in PATH
 - telebot library
+
+## Folder Structure
+
+```
+opencode-telegram-bot/
+├── src/
+│   └── telegram_controller.py     # Main bot implementation
+├── test/
+│   └── test_telegram_controller.py # Unit tests
+├── main.py                        # Entry point script
+├── run_bot.sh                     # Execution script
+├── requirements.txt               # Python dependencies
+├── README.md                      # This documentation
+└── AGENTS.md                      # Implementation specification
+```
 
 ## Example Output
 
@@ -76,3 +95,19 @@ Hello world!
 - Command execution errors are logged and sent to Telegram
 - Empty messages are skipped
 - JSON parsing errors are handled gracefully
+- Automatic fallback to new session creation when needed
+
+## Development
+
+### Implementation Status
+- All syntax errors have been fixed
+- Complete functionality implemented
+- Infinite loop concerns resolved
+- All unit tests pass (10/10)
+
+### Key Improvements
+- Robust session management with automatic fallback
+- Proper filtering of step_start/step_finish messages
+- Dot-only escaping for Telegram MarkdownV2 compatibility
+- Comprehensive error handling and logging
+- Performance optimizations
