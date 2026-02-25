@@ -113,22 +113,15 @@ def process_output_line(line: str, chat_id: str) -> Optional[str]:
         elif obj.get("type") == "completed":
             return "Operation completed successfully."
         elif obj.get("type") == "tool_use":
-            # Extract tool name and inputs/outputs - handle both flat structure and nested "part" structure
-            tool_name = "Unknown tool"
-            inputs = {}
-            outputs = {}
-            
-            # Try to extract from part object first (common in opencode)
+            # Extract tool name and inputs/outputs from the opencode structure
+            # opencode structures: "part" contains a "tool" field and "state" contains "input" and "output"
             part = obj.get("part", {})
-            if part:
-                tool_name = part.get("tool", "Unknown tool")
-                inputs = part.get("input", {})
-                outputs = part.get("output", {})
-            else:
-                # Fall back to direct fields if no part object
-                tool_name = obj.get("tool_name", obj.get("tool", "Unknown tool"))
-                inputs = obj.get("input", {})
-                outputs = obj.get("output", {})
+            tool_name = part.get("tool", "Unknown tool")
+            
+            # Extract input and output from state within part
+            state = part.get("state", {})
+            inputs = state.get("input", {})
+            outputs = state.get("output", {})
             
             # Format tool usage information in requested format: [tool_name]:\ninput_data\noutput_data
             result = f"[{tool_name}]:\n"
@@ -181,14 +174,17 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             if output == '' and process.poll() is not None:
                 break
             if output:
+                logger.info(f"Raw opencode output line: {output.strip()}")
                 formatted = process_output_line(output.strip(), chat_id)
-                if formatted is not None:  # Fixed: was checking truthy instead of None
+                if formatted is not None and formatted.strip():  # Fixed: also check that formatted is not empty
                     # Send formatted message to Telegram
                     try:
                         logger.info(f"Sending to Telegram: {formatted[:100]}...")  # Log first 100 chars
                         bot.send_message(chat_id, formatted)
                     except Exception as e:
                         logger.error(f"Error sending message to Telegram: {e}")
+                elif formatted is not None:
+                    logger.warning("Skipping empty formatted message")
         
         # Check for errors
         stderr_output = process.stderr.read() if process.stderr else ""
