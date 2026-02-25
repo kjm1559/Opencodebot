@@ -308,12 +308,22 @@ session_store = {
 | Normal message (with session) | `opencode run --session "sess_123" "message" --format json` |
 | Normal message (no session) | `opencode run --continue "message" --format json` → `opencode session list --format json` → set latest session as current |
 
-# 12. Future Extensions (Optional)
-- /new_session
-- /delete_session
-- Streaming partial responses
-- Inline session selection buttons
-- Persistent DB-backed session storage
+# 12. Folder Structure
+
+The project uses the following directory structure:
+
+```
+opencode-telegram-bot/
+├── src/
+│   └── telegram_controller.py     # Main bot implementation
+├── test/
+│   └── test_telegram_controller.py # Unit tests
+├── main.py                        # Entry point script
+├── run_bot.sh                     # Execution script
+├── requirements.txt               # Python dependencies
+├── README.md                      # Setup documentation
+└── AGENTS.md                      # This specification document
+```
 
 # 13. Implementation Notes
 - All commands and message types from specification have been implemented
@@ -335,22 +345,6 @@ session_store = {
 - Error handling for all subprocess operations implemented
 - Proper typing annotations added for all functions
 - Automatic session selection implemented: When no session is set and a message is sent, the bot automatically creates a new session using --continue flag and tracks it properly
-
-# 13. Implementation Notes
-- All commands and message types from specification have been implemented
-- Session storage is in-memory (per chat) - for production use, implement database-backed storage
-- Environment variables TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are supported
-- User feedback "Executing command... Please wait." is shown during command execution
-- All filtering rules from specification are implemented (step_start/step_finish messages filtered out)
-- Tool_use messages are formatted with tool name, inputs, and outputs as specified
-- Tool_use messages display in format: [tool_name]:\nStatus: {status}\n```json\nInput: {input_data}\n```\n with markdown code block formatting
-- Text messages extract content from part.text field and display as string
-- Each opencode output line is sent as a single message to Telegram
-- Comprehensive logging added for all command execution and output processing
-- Empty message prevention implemented to avoid Telegram API errors
-- Robust tool name extraction handles both nested and flat message structures
-- Enhanced status information handling for tool_use messages
-- Text messages properly extract content from nested part.text structure
 
 ⸻
 

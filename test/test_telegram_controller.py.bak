@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from src.telegram_controller import (
     escape_markdown_v2,
+    escape_only_dots,
     process_output_line,
     format_session_list,
     is_valid_session_id,

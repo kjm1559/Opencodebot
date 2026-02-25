@@ -40,8 +40,11 @@ def escape_markdown_v2(text: str) -> str:
     """
     Telegram MarkdownV2 escape function
     """
-    escape_chars = r'_*$begin:math:display$$end:math:display$()~`>#+\-=|{}.!'
-    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+    # Characters that need to be escaped in MarkdownV2
+    escape_chars = r'_*$()~`>#+\-=|{}.!'
+    # Use re.escape on each character and create a pattern to match any of these characters
+    escaped_text = re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+    return escaped_text
 
 def escape_only_dots(text: str) -> str:
     """Escape only '.' for Telegram MarkdownV2 ('.' -> '\\.')."""
@@ -57,7 +60,7 @@ def process_output_line(line: str, chat_id: str) -> str:
         
         # Filter out step_start and step_finish messages completely
         if obj.get("type") == "step_start" or obj.get("type") == "step_finish":
-            return None  # Don't send these messages
+            return ""  # Don't send these messages
         
         if obj.get("type") == "text":
             # Extract text content
@@ -187,27 +190,28 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         )
         
         # Read output line by line
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                # Add proper handling for the case when process.stdout might be None
-                output_clean = output.strip() if output else ""
-                if output_clean:
-                    logger.info(f"Raw opencode output line: {output_clean}")
-                    formatted = process_output_line(output_clean, chat_id)
-                    if formatted is not None and formatted.strip():  # Check that formatted is not None and not empty
-                        # Escape only dots for Telegram MarkdownV2
-                        escaped_message = escape_only_dots(formatted)
-                        # Send formatted message to Telegram
-                        try:
-                            logger.info(f"Sending to Telegram: {escaped_message[:100]}...")  # Log first 100 chars
-                            bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
-                        except Exception as e:
-                            logger.error(f"Error sending message to Telegram: {e}")
-                    elif formatted is not None:
-                        logger.warning("Skipping empty formatted message")
+        if process.stdout is not None:
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    # Add proper handling for the case when process.stdout might be None
+                    output_clean = output.strip() if output else ""
+                    if output_clean:
+                        logger.info(f"Raw opencode output line: {output_clean}")
+                        formatted = process_output_line(output_clean, chat_id)
+                        if formatted and formatted.strip():  # Check that formatted is not empty
+                            # Escape only dots for Telegram MarkdownV2
+                            escaped_message = escape_only_dots(formatted)
+                            # Send formatted message to Telegram
+                            try:
+                                logger.info(f"Sending to Telegram: {escaped_message[:100]}...")  # Log first 100 chars
+                                bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
+                            except Exception as e:
+                                logger.error(f"Error sending message to Telegram: {e}")
+                        elif formatted:
+                            logger.warning("Skipping empty formatted message")
         
         # Check for errors
         stderr_output = process.stderr.read() if process.stderr else ""
@@ -315,34 +319,56 @@ def handle_message(message):
     chat_id = str(message.chat.id)
     logger.info(f"Received message from chat {chat_id}: {message.text}")
     
-    try:
-        # Show typing indicator
-        bot.send_chat_action(chat_id, 'typing')
-        
-        # Check if we have an active session
-        current_session_id = get_current_session_id(chat_id)
-        
-        if current_session_id:
-            # Use the existing session
-            logger.info(f"Using existing session {current_session_id}")
-            command_args = ["run", "--session", current_session_id, message.text, "--format", "json"]
-            stream_opencode_output(chat_id, command_args)
-        else:
-            # Start a new session using --continue
-            logger.info("Starting new session with --continue")
-            # We'll first run the command with --continue, which should automatically create a session
-            # Then we'll query session list to get the latest session ID
+    # Show typing indicator
+    bot.send_chat_action(chat_id, 'typing')
+    
+    # Check if we have an active session
+    current_session_id = get_current_session_id(chat_id)
+    
+    if current_session_id:
+        # Use the existing session
+        logger.info(f"Using existing session {current_session_id}")
+        command_args = ["run", "--session", current_session_id, message.text, "--format", "json"]
+        stream_opencode_output(chat_id, command_args)
+    else:
+        # Check if there are existing sessions to use instead of always creating a new one
+        logger.info("No active session found, checking for existing sessions...")
+        try:
+            # First, get the list of existing sessions
+            result = run_opencode_command(["session", "list", "--format", "json"])
+            sessions_data = json.loads(result.stdout)
+            
+            if sessions_data:
+                # Sort sessions by updated time (most recent first)
+                # Note: This assumes sessions have a 'updated' or 'created' timestamp
+                # If we don't have proper timestamp sorting, we'll use the last created session by default
+                latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
+                selected_session_id = latest_session['id']
+                
+                logger.info(f"Using latest existing session {selected_session_id}")
+                command_args = ["run", "--session", selected_session_id, message.text, "--format", "json"]
+                stream_opencode_output(chat_id, command_args)
+            else:
+                # No existing sessions, create a new one using --continue
+                logger.info("No existing sessions, creating new session with --continue")
+                command_args = ["run", "--continue", message.text, "--format", "json"]
+                
+                # Execute the command, but just send a message to user to indicate it's running
+                escaped_message = escape_markdown_v2("Executing command... Please wait.")
+                bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
+                
+                # The execution will proceed and opencode will automatically create a session
+                # For the purposes of streaming, we just run the command now
+                # We'll let the opencode command handle the actual session creation
+                stream_opencode_output(chat_id, command_args)
+                
+        except Exception as e:
+            logger.error(f"Error checking existing sessions: {e}")
+            # If we can't check sessions, fall back to creating a new one
+            logger.info("Falling back to creating new session with --continue")
             command_args = ["run", "--continue", message.text, "--format", "json"]
             
-            # Execute the command, but just send a message to user to indicate it's running
             escaped_message = escape_markdown_v2("Executing command... Please wait.")
             bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
             
-            # The execution is run but the return is not waited for for the streaming - let
-            # the opencode auto-manage the session creation via the --continue flag. The user 
-            # can get the session ID via the session list command now.
-        
-    except Exception as e:
-        logger.error(f"Error handling message: {e}")
-        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
-        bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
+            stream_opencode_output(chat_id, command_args)
