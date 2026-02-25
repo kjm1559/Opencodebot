@@ -41,6 +41,7 @@ pip install -r requirements.txt
 2. Set environment variables:
 ```bash
 export TELEGRAM_BOT_TOKEN="your_bot_token_here"
+export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional, for restricting to specific chat
 ```
 
 3. Run the bot:
