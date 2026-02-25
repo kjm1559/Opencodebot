@@ -325,6 +325,9 @@ session_store = {
 - Tool_use messages display in format: [tool_name]:\nInput: {input_data}\nOutput: {output_data}\n with code block formatting
 - Text messages are displayed verbatim as received from opencode
 - Each opencode output line is sent as a single message to Telegram
+- Comprehensive logging added for all command execution and output processing
+- Empty message prevention implemented to avoid Telegram API errors
+- Robust tool name extraction handles both nested and flat message structures
 
 ⸻
 
