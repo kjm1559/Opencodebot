@@ -5,7 +5,6 @@ This bot controls opencode via CLI commands through Telegram.
 """
 
 import os
-import asyncio
 import re
 import json
 import subprocess
@@ -36,6 +35,14 @@ except ImportError as e:
 # In-memory session storage (per chat)
 session_store: Dict[str, Dict[str, Any]] = {}
 
+# Configuration constants
+COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
+MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
+
+# Constants
+COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
+MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
+
 def escape_markdown_v2(text: str) -> str:
     """
     Telegram MarkdownV2 escape function
@@ -48,7 +55,7 @@ def escape_markdown_v2(text: str) -> str:
 
 def escape_only_dots(text: str) -> str:
     """Escape only '.' for Telegram MarkdownV2 ('.' -> '\\.')."""
-    return text.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!")
+    return text.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=")
 
 def process_output_line(line: str, chat_id: str) -> str:
     """Process a single line of opencode output and format it for Telegram."""
@@ -131,19 +138,23 @@ def format_message(obj: dict) -> str:
         # JSON format for unknown types
         return json.dumps(obj, indent=2)
 
-def run_opencode_command(args: List[str]) -> subprocess.CompletedProcess:
+def run_opencode_command(args: List[str], timeout: int = COMMAND_TIMEOUT) -> subprocess.CompletedProcess:
     """Run an opencode command and return the result."""
     try:
         result = subprocess.run(
             ["opencode"] + args,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
+            timeout=timeout
         )
         return result
+    except subprocess.TimeoutExpired:
+        logger.error(f"opencode command timed out after {timeout} seconds")
+        raise
     except subprocess.CalledProcessError as e:
         logger.error(f"opencode command failed: {e}")
-        raise e
+        raise
 
 def format_session_list(sessions_data) -> str:
     """Format session list for Telegram."""
@@ -245,6 +256,9 @@ def handle_session_command(message):
     logger.info(f"Received /session command from chat {chat_id}")
     
     try:
+        # Show typing indicator for long-running operations
+        bot.send_chat_action(chat_id, 'typing')
+        
         result = run_opencode_command(["session", "list", "--format", "json"])
         sessions_data = json.loads(result.stdout)
         formatted_sessions = format_session_list(sessions_data)
