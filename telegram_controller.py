@@ -278,7 +278,13 @@ def handle_message(message):
     logger.info(f"Received message from chat {chat_id}, current session: {current_session_id}")
     
     # Send a message indicating command execution has started
-    bot.send_message(chat_id, "Executing command... Please wait.")
+    # Use Telegram's typing indicator instead of text message
+    try:
+        bot.send_chat_action(chat_id, 'typing')
+    except Exception as e:
+        logger.error(f"Failed to send typing indicator: {e}")
+        # Fallback to text message if typing indicator fails
+        bot.reply_to(message, "Executing command... Please wait.")
     
     if current_session_id:
         # Using existing session
