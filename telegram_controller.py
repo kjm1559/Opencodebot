@@ -101,7 +101,13 @@ def process_output_line(line: str, chat_id: str) -> Optional[str]:
             
         # Process other message types
         if obj.get("type") == "text":
-            return obj.get("text", "")
+            # Handle text messages that may be nested inside "part" object
+            text_content = obj.get("text", "")
+            if not text_content:
+                # Try to extract from part.text if it's nested structure
+                part = obj.get("part", {})
+                text_content = part.get("text", "")
+            return text_content
         elif obj.get("type") == "error":
             return f"Error: {obj.get('message', '')}"
         elif obj.get("type") == "command":
@@ -134,12 +140,13 @@ def process_output_line(line: str, chat_id: str) -> Optional[str]:
                 inputs = obj.get("input", {})
                 outputs = obj.get("output", {})
             
-            # Format tool usage information with status in markdown code block
+            # Format tool usage information with status in markdown code block - showing only input
             result = f"[{tool_name}]:\n"
             if status:
                 result += f"Status: {status}\n"
+            result += f"```json\n"
             result += f"Input: {json.dumps(inputs, indent=2)}\n"
-            result += f"Output: {json.dumps(outputs, indent=2)}\n"
+            result += f"```\n"
             return result.strip()
         else:
             # For unknown types, send raw message
