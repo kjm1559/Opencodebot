@@ -15,7 +15,7 @@ Telegram bot controlling `opencode` via CLI commands with intelligent typing ind
 - `/current_session` - Show current session
 - `/new_session` - Create new session  
 - `/compact <session_id>` - Compact current session
-- `/reset` - Clear current session
+- `/reset` - Clear current session (creates new session for next command)
 
 ## Typing Control
 - Typing indicators sent only at command start
@@ -27,3 +27,4 @@ Telegram bot controlling `opencode` via CLI commands with intelligent typing ind
 - Filters out `step_start`/`step_finish` messages
 - Streams output to Telegram in real-time
 - Supports large outputs with proper error handling
+- Sends "Operation completed successfully." message upon successful command completion

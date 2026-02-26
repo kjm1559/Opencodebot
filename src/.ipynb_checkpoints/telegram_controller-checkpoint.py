@@ -55,7 +55,7 @@ def escape_markdown_v2(text: str) -> str:
 
 def escape_only_dots(text: str) -> str:
     """Escape only '.' for Telegram MarkdownV2 ('.' -> '\\.')."""
-    return text.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=")
+    return text.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=").replace("+", r"\+")
 
 def process_output_line(line: str, chat_id: str) -> str:
     """Process a single line of opencode output and format it for Telegram."""

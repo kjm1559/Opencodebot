@@ -55,7 +55,7 @@ def escape_markdown_v2(text: str) -> str:
 
 def escape_only_dots(text: str) -> str:
     """Escape only '.' for Telegram MarkdownV2 ('.' -> '\\.')."""
-    return text.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=")
+    return text.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=").replace("+", r"\+")
 
 def process_output_line(line: str, chat_id: str) -> str:
     """Process a single line of opencode output and format it for Telegram."""
@@ -185,8 +185,9 @@ def set_current_session_id(chat_id: str, session_id: str) -> None:
 def get_current_session_id(chat_id: str) -> str:
     """Get the current session ID for a chat."""
     if chat_id not in session_store:
-        return None
-    return session_store[chat_id].get("current_session_id")
+        return ""
+    session_id = session_store[chat_id].get("current_session_id")
+    return session_id if session_id is not None else ""
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
@@ -241,6 +242,9 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
         else:
             logger.info("Command completed successfully")
+            # Send completion message to Telegram
+            escaped_completion = escape_markdown_v2("Operation completed successfully.")
+            bot.send_message(chat_id, escaped_completion, parse_mode="MarkdownV2")
             
     except Exception as e:
         logger.error(f"Error streaming opencode output: {e}")
@@ -403,9 +407,9 @@ def handle_reset_command(message):
     logger.info(f"Received /reset command from chat {chat_id}")
     
     try:
-        # Clear the current session ID
-        set_current_session_id(chat_id, None)
-        escaped_message = escape_markdown_v2("Session has been reset. All session data cleared.")
+        # Clear the current session ID to force creation of a new session
+        set_current_session_id(chat_id, "")
+        escaped_message = escape_markdown_v2("Session has been reset. A new session will be created for the next command.")
         bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         
     except Exception as e:
