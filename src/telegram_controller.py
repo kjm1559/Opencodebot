@@ -32,10 +32,30 @@ except ImportError as e:
     logger.error(f"Failed to import telebot: {e}")
     sys.exit(1)
 
+# Set bot commands for Telegram UI
+try:
+    from telebot import types
+    bot.set_my_commands([
+        types.BotCommand("session", "List available sessions"),
+        types.BotCommand("set_session", "Set current session"),
+        types.BotCommand("current_session", "Show current session"),
+        types.BotCommand("new_session", "Create new session"),
+        types.BotCommand("compact", "Compact current session"),
+        types.BotCommand("reset", "Clear current session"),
+        types.BotCommand("help", "Show this help message"),
+    ])
+    logger.info("Successfully set bot commands")
+except Exception as e:
+    logger.error(f"Failed to set bot commands: {e}")
+
 # In-memory session storage (per chat)
 session_store: Dict[str, Dict[str, Any]] = {}
 
 # Configuration constants
+COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
+MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
+
+# Constants
 COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
 MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
 
@@ -114,8 +134,12 @@ def process_output_line(line: str, chat_id: str) -> str:
             # For unknown types, send raw message
             return json.dumps(obj, indent=2)
             
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         # If line is not valid JSON, treat it as raw text
+        # Also handle the specific "Extra data" error which can happen when JSON parsing is attempted on partial data
+        if "Extra data" in str(e):
+            logger.warning(f"Skipping line due to extra data in JSON: {line[:50]}...")
+            return ""
         return line.strip()
 
 def format_message(obj: dict) -> str:
@@ -185,9 +209,9 @@ def set_current_session_id(chat_id: str, session_id: str) -> None:
 def get_current_session_id(chat_id: str) -> str:
     """Get the current session ID for a chat."""
     if chat_id not in session_store:
-        return ""
+        return None
     session_id = session_store[chat_id].get("current_session_id")
-    return session_id if session_id is not None else ""
+    return session_id if session_id is not None else None
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
@@ -251,7 +275,32 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         escaped_error = escape_markdown_v2(f"Error occurred while running command: {str(e)}")
         bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
 
-# === Add the message handlers below ===
+@bot.message_handler(commands=['help'])
+def handle_help_command(message):
+    """Handle /help command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /help command from chat {chat_id}")
+    
+    try:
+        help_text = (
+            "OpenCode Telegram Controller Help:\n\n"
+            "Commands:\n"
+            "/session - List available sessions\n"
+            "/set_session <id> - Set current session\n"
+            "/current_session - Show current session\n"
+            "/new_session - Create new session\n"
+            "/compact <session_id> - Compact current session\n"
+            "/reset - Clear current session\n"
+            "/help - Show this help message\n\n"
+            "Simply type any message to run opencode commands."
+        )
+        escaped_message = escape_markdown_v2(help_text)
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        
+    except Exception as e:
+        logger.error(f"Error handling /help command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
 @bot.message_handler(commands=['session'])
 def handle_session_command(message):
