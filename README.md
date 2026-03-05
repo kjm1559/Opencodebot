@@ -4,6 +4,7 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 
 ## Features
 
+- **Model Management**: List and set AI models from opencode
 - **Project Management**: Set and manage project workspace directories
 - **Session Management**: Create, list, set, and reset sessions
 - **Command Execution**: Run OpenCode commands with real-time streaming output
@@ -13,6 +14,10 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 - **Workspace Support**: Dedicated workspace directory for project management (git clone, folders)
 
 ## Commands
+
+### Model Management
+- `/model` - List available models and show current model
+- `/model <model_name>` - Set current model (e.g., `/model ollama/qwen3.5:27b`)
 
 ### Project Management
 - `/project [path]` - Set or show current project path
