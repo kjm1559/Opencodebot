@@ -63,14 +63,7 @@ active_process: Dict[str, Any] = {}  # Track active processes for cancel
 # Configuration constants
 COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
 MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
-
-# Constants
-COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
-MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
-
-# Constants
-COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
-MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
+MAX_PREVIEW_LENGTH = 2500  # Max characters for response preview
 
 def escape_markdown_v2(text: str) -> str:
     """
@@ -376,251 +369,216 @@ def get_available_models() -> List[str]:
 
 def get_tool_status_message(tool_name: str, status: str) -> Optional[str]:
     """Get a short status message for tool execution."""
-    status_messages = {
-        ("read_file", "reading"): "📖 파일 읽는 중...",
-        ("edit_file", "editing"): "✏️ 파일 수정 중...",
-        ("write_file", "writing"): "📄 파일 작성 중...",
-        ("bash", "running"): "💻 명령어 실행 중...",
-        ("webfetch", "fetching"): "🌐 웹 검색 중...",
-        ("glob", "searching"): "🔍 파일 검색 중...",
-        ("grep", "searching"): "🔍 텍스트 검색 중..."
+    TOOL_STATUS_MAP = {
+        "read_file": ("reading", "📖 파일 읽는 중..."),
+        "edit_file": ("editing", "✏️ 파일 수정 중..."),
+        "write_file": ("writing", "📄 파일 작성 중..."),
+        "bash": ("running", "💻 명령어 실행 중..."),
+        "webfetch": ("fetching", "🌐 웹 검색 중..."),
+        "glob": ("searching", "🔍 파일 검색 중..."),
+        "grep": ("searching", "🔍 텍스트 검색 중...")
     }
     
-    # Extract base tool name
-    base_tool = tool_name.split("_")[0] if "_" in tool_name else tool_name
-    base_status = status.split("_")[0] if "_" in status else status
-    
-    return status_messages.get((tool_name, status))
+    tool_info = TOOL_STATUS_MAP.get(tool_name)
+    if tool_info and tool_info[0] in status:
+        return tool_info[1]
+    return None
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to terminal, send only summary to Telegram."""
     try:
-        # Send initial working message to Telegram
-        initial_message = escape_markdown_v2("🔄 작업 시작...")
-        bot.send_message(chat_id, initial_message, parse_mode="MarkdownV2")
+        bot.send_message(chat_id, escape_markdown_v2("🔄 작업 시작..."), parse_mode="MarkdownV2")
         
         logger.info(f"Executing opencode command with args: {command_args}")
+        
         process = subprocess.Popen(
             ["opencode"] + command_args,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            bufsize=1  # Line buffered
+            bufsize=1
         )
         
-        # Collect all output for summary
         collect_data = collect_output_for_summary()
-        last_tool_status = None  # Track last tool status to avoid duplicate messages
+        last_tool_status: Optional[str] = None
         
-        # Stream output to terminal (stdout)
-        if process.stdout is not None:
-            while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    line = output.strip()
-                    # Print raw line to terminal
-                    print(line, flush=True)
+        # Stream stdout
+        if process.stdout:
+            for line in process.stdout:
+                line = line.strip()
+                if not line:
+                    continue
                     
-                    # Collect for summary
-                    process_line_for_summary(collect_data, line)
-                    
-                    # Check for tool_use and send status to Telegram
-                    try:
-                        obj = json.loads(line)
-                        if obj.get("type") == "tool_use":
-                            part = obj.get("part", {})
-                            tool_name = part.get("tool", "")
-                            state = part.get("state", {})
-                            status = state.get("status", "")
-                            
-                            # Get status message
-                            status_msg = get_tool_status_message(tool_name, status)
-                            if status_msg and status_msg != last_tool_status and "finished" not in status:
-                                last_tool_status = status_msg
-                                try:
-                                    escaped_status = escape_markdown_v2(status_msg)
-                                    bot.send_message(chat_id, escaped_status, parse_mode="MarkdownV2")
-                                except Exception as e:
-                                    logger.warning(f"Failed to send status message: {e}")
-                    except json.JSONDecodeError:
-                        pass
+                print(line, flush=True)
+                process_line_for_summary(collect_data, line)
+                
+                # Send tool status to Telegram
+                try:
+                    obj = json.loads(line)
+                    if obj.get("type") == "tool_use":
+                        part = obj.get("part", {})
+                        tool_name = part.get("tool", "")
+                        status = part.get("state", {}).get("status", "")
+                        
+                        status_msg = get_tool_status_message(tool_name, status)
+                        if status_msg and status_msg != last_tool_status and "finished" not in status:
+                            last_tool_status = status_msg
+                            try:
+                                bot.send_message(chat_id, escape_markdown_v2(status_msg), parse_mode="MarkdownV2")
+                            except Exception as e:
+                                logger.warning(f"Failed to send status: {e}")
+                except json.JSONDecodeError:
+                    pass
         
-        # Stream stderr to terminal
-        if process.stderr is not None:
+        # Stream stderr
+        if process.stderr:
             for line in process.stderr:
                 print(f"STDERR: {line.strip()}", flush=True)
         
-        # Check return code
         return_code = process.poll()
         if return_code != 0:
             logger.error(f"opencode command exited with code {return_code}")
         
-        # Generate summary from collected data
+        # Generate and send summary
         summary = summarize_output(collect_data.get("lines", []))
         full_text = summary.get("final_text", "")
         
-        # Debug log
         logger.info(f"Summary: {summary}")
-        logger.info(f"Full text length: {len(full_text)}")
         
-        # Send summary to Telegram
-        summary_text, keyboard, detail = format_summary_message(summary, full_text)
-        
+        summary_text, keyboard, _ = format_summary_message(summary, full_text)
         if not summary_text.strip():
             summary_text = "✅ 작업 완료"
         
         escaped_summary = escape_only_dots(summary_text)
-        
-        logger.info(f"Sending summary to Telegram: {len(escaped_summary)} chars")
+        logger.info(f"Sending summary: {len(escaped_summary)} chars")
         
         try:
-            if keyboard:
-                bot.send_message(chat_id, f"📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2", reply_markup=keyboard)
-            else:
-                bot.send_message(chat_id, f"📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2")
+            bot.send_message(
+                chat_id,
+                f"📊 요약:\n{escaped_summary}",
+                parse_mode="MarkdownV2",
+                reply_markup=keyboard
+            )
             logger.info("Summary sent successfully")
         except Exception as e:
             logger.error(f"Error sending summary: {e}")
-            # Try without markdown
             try:
                 bot.send_message(chat_id, f"📊 요약:\n{summary_text}")
-                logger.info("Summary sent without markdown")
             except Exception as e2:
                 logger.error(f"Error sending plain summary: {e2}")
         
-        # Send completion indicator
-        completion_msg = escape_markdown_v2("━─━─━─━─━─━─━─━─\n✅ 작업 완료")
-        bot.send_message(chat_id, completion_msg, parse_mode="MarkdownV2")
+        bot.send_message(
+            chat_id,
+            escape_markdown_v2("━─━─━─━─━─━─━─━─\n✅ 작업 완료"),
+            parse_mode="MarkdownV2"
+        )
         
         if return_code == 0:
             logger.info("Command completed successfully")
         
     except Exception as e:
         logger.error(f"Error streaming opencode output: {e}")
-        escaped_error = escape_markdown_v2(f"❌ 오류: {str(e)}")
-        bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
+        bot.send_message(
+            chat_id,
+            escape_markdown_v2(f"❌ 오류: {str(e)}"),
+            parse_mode="MarkdownV2"
+        )
 
 @bot.message_handler(commands=['project'])
 def handle_project_command(message):
     """Handle /project command - list projects, switch to project, or clone new project."""
     chat_id = str(message.chat.id)
-    logger.info(f"Received /project command from chat {chat_id}")
+    project_input = message.text[len('/project'):].strip()
     
-    try:
-        # Get project path/URL from message
-        project_input = message.text[len('/project'):].strip()
+    if not project_input:
+        # List all projects
+        projects = list_projects()
+        current_project = get_current_project(chat_id)
         
-        if not project_input:
-            # List all projects
-            projects = list_projects()
-            current_project = get_current_project(chat_id)
-            
-            if not projects:
-                escaped_message = escape_markdown_v2("📁 No projects in ~/projects/\n\nYou can clone a project with: /project <git-url>")
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-            else:
-                response = "📁 Available Projects:\n\n"
-                for i, proj in enumerate(projects, 1):
-                    current_marker = "✅" if current_project and proj in current_project else " "
-                    response += f"{current_marker} {i}. {proj}\n"
-                
-                if current_project:
-                    response += f"\n📍 Current: {current_project}"
-                else:
-                    response += "\n\n📍当前 프로젝트 없음"
-                    response += "\n\nUse /project <number> to switch to a project"
-                    response += "\nOr /project <git-url> to clone a new project"
-                
-                escaped_message = escape_markdown_v2(response)
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        if not projects:
+            bot.reply_to(
+                message,
+                escape_markdown_v2("📁 No projects in ~/projects/\n\nYou can clone with: /project \u003cgit-url>"),
+                parse_mode="MarkdownV2"
+            )
+            return
+        
+        response = "📁 Available Projects:\n\n"
+        for i, proj in enumerate(projects, 1):
+            marker = "✅" if current_project and proj in current_project else " "
+            response += f"{marker} {i}. {proj}\n"
+        
+        if current_project:
+            response += f"\n📍 Current: {current_project}"
         else:
-            # Check if it's a number (project switch)
-            if project_input.isdigit():
-                project_index = int(project_input) - 1
-                projects = list_projects()
-                
-                if project_index >= 0 and project_index < len(projects):
-                    project_name = projects[project_index]
-                    project_path = get_project_path(project_name)
-                    
-                    # Set project WITHOUT resetting session
-                    set_current_project(chat_id, project_path)
-                    
-                    escaped_message = escape_markdown_v2(f"📁 Switched to project: {project_name}\n🔄 기존 세션 유지됨")
-                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-                else:
-                    escaped_message = escape_markdown_v2(f"❌ Invalid project number. Use /project to list projects.")
-                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+            response += "\n📍 No project selected" + "\n\nUse /project \u003cnumber> or /project \u003cgit-url>"
+        
+        bot.reply_to(message, escape_markdown_v2(response), parse_mode="MarkdownV2")
+        return
+    
+    # Handle project number
+    if project_input.isdigit():
+        projects = list_projects()
+        idx = int(project_input) - 1
+        
+        if 0 <= idx < len(projects):
+            set_current_project(chat_id, get_project_path(projects[idx]))
+            bot.reply_to(
+                message,
+                escape_markdown_v2(f"📁 Switched to: {projects[idx]}\n🔄 Session preserved"),
+                parse_mode="MarkdownV2"
+            )
+        else:
+            bot.reply_to(message, escape_markdown_v2("❌ Invalid project number"), parse_mode="MarkdownV2")
+        return
+    
+    # Handle git URL
+    if project_input.startswith(('git@', 'http://', 'https://', 'git://')):
+        bot.send_message(chat_id, escape_markdown_v2("🔄 Cloning..."), parse_mode="MarkdownV2")
+        
+        try:
+            repo_name = project_input.split('/')[-1].replace('.git', '')
+            clone_path = os.path.expanduser(f"~/projects/{repo_name}")
+            os.makedirs(os.path.dirname(clone_path), exist_ok=True)
+            
+            result = subprocess.run(
+                ['git', 'clone', project_input, clone_path],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+            
+            if result.returncode != 0:
+                bot.reply_to(message, escape_markdown_v2(f"❌ Clone failed: {result.stderr}"), parse_mode="MarkdownV2")
                 return
             
-            # Check if it's a git URL
-            is_git_url = project_input.startswith(('git@', 'http://', 'https://', 'git://'))
-            
-            if is_git_url:
-                # Git clone the repository
-                escaped_message = escape_markdown_v2("🔄 Cloning repository...")
-                bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
-                
-                # Extract repo name from URL
-                repo_name = project_input.split('/')[-1].replace('.git', '')
-                clone_path = os.path.join(os.path.expanduser('~'), 'projects', repo_name)
-                
-                # Create parent directory if it doesn't exist
-                os.makedirs(os.path.dirname(clone_path), exist_ok=True)
-                
-                # Clone repository
-                clone_cmd = subprocess.run(
-                    ['git', 'clone', project_input, clone_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=300
-                )
-                
-                if clone_cmd.returncode != 0:
-                    escaped_error = escape_markdown_v2(f"❌ Clone failed: {clone_cmd.stderr}")
-                    bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
-                    return
-                
-                project_path = clone_path
-                logger.info(f"Cloned {project_input} to {clone_path}")
-                
-                # Set project and RESET session for new project
-                set_current_project(chat_id, project_path)
-                set_current_session_id(chat_id, "")
-                
-                escaped_message = escape_markdown_v2(f"📁 Project cloned: {repo_name}\n✨ New session will be created")
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-            else:
-                # Check if it matches a project name
-                projects = list_projects()
-                if project_input in projects:
-                    project_path = get_project_path(project_input)
-                    
-                    # Set project WITHOUT resetting session
-                    set_current_project(chat_id, project_path)
-                    
-                    escaped_message = escape_markdown_v2(f"📁 Switched to project: {project_input}\n🔄 기존 세션 유지됨")
-                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-                else:
-                    # Try as local path
-                    if not os.path.exists(project_input):
-                        escaped_message = escape_markdown_v2(f"❌ Path/project not found: {project_input}")
-                        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-                    else:
-                        set_current_project(chat_id, project_input)
-                        escaped_message = escape_markdown_v2(f"📁 Project set to: {project_input}")
-                        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-                
-    except subprocess.TimeoutExpired:
-        logger.error("Git clone timed out")
-        escaped_error = escape_markdown_v2("❌ Clone timed out. Try again with a smaller repository.")
-        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
-    except Exception as e:
-        logger.error(f"Error handling /project command: {e}")
-        escaped_error = escape_markdown_v2(f"❌ Error: {str(e)}")
-        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+            set_current_project(chat_id, clone_path)
+            set_current_session_id(chat_id, "")
+            bot.reply_to(
+                message,
+                escape_markdown_v2(f"📁 Cloned: {repo_name}\n✨ New session created"),
+                parse_mode="MarkdownV2"
+            )
+        except subprocess.TimeoutExpired:
+            bot.reply_to(message, escape_markdown_v2("❌ Clone timed out"), parse_mode="MarkdownV2")
+        except Exception as e:
+            bot.reply_to(message, escape_markdown_v2(f"❌ Error: {str(e)}"), parse_mode="MarkdownV2")
+        return
+    
+    # Handle project name or path
+    projects = list_projects()
+    if project_input in projects:
+        set_current_project(chat_id, get_project_path(project_input))
+        bot.reply_to(
+            message,
+            escape_markdown_v2(f"📁 Switched to: {project_input}\n🔄 Session preserved"),
+            parse_mode="MarkdownV2"
+        )
+    elif os.path.exists(project_input):
+        set_current_project(chat_id, project_input)
+        bot.reply_to(message, escape_markdown_v2(f"📁 Set: {project_input}"), parse_mode="MarkdownV2")
+    else:
+        bot.reply_to(message, escape_markdown_v2(f"❌ Not found: {project_input}"), parse_mode="MarkdownV2")
 
 @bot.message_handler(commands=['help'])
 def handle_help_command(message):
