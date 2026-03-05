@@ -148,6 +148,21 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
     """Format summary into a readable message with inline keyboard."""
     from telebot import types
     
+    # Create message text
+    message_lines = []
+    
+    # Add response text if available (this is the main content!)
+    if summary["final_text"]:
+        text = summary["final_text"].strip()
+        if len(text) > 2500:
+            text = text[:2500] + "..."
+        
+        # Escape special chars for summary
+        escaped_text = text.replace("\n", "\n")
+        
+        message_lines.append("💬 응답:\n")
+        message_lines.append(f"{escaped_text}\n")
+    
     # Build emoji-based summary
     emoji_parts = []
     
@@ -163,33 +178,15 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
     if summary["errors"] > 0:
         emoji_parts.append(f"❌ 오류 {summary['errors']}개 발생")
     
-    if not emoji_parts and summary["final_text"]:
-        emoji_parts.append("✅ 작업 완료")
-    
-    # Create message text
-    message_lines = []
-    
     if emoji_parts:
-        message_lines.append("✨ 작업 SUMMARY\n")
+        message_lines.append("\n✨ 작업 내역:\n")
         for item in emoji_parts:
             message_lines.append(f"  • {item}\n")
     
-    # Add response text if available (max 150 chars for preview)
-    if summary["final_text"]:
-        text = summary["final_text"].strip()
-        if len(text) > 300:
-            text = text[:300] + "..."
-        
-        # Escape special chars for summary
-        escaped_text = text.replace("\n", " ").strip()
-        
-        message_lines.append("\n📝 응답 미리보기를:\n")
-        message_lines.append(escaped_text)
-    
     # Create inline keyboard for detail view
     buttons = []
-    if detail_text and len(detail_text.strip()) > 0:
-        button = types.InlineKeyboardButton("📋 세부 내용 보기", callback_data=f"details_{hash(detail_text[:50])}")
+    if detail_text and len(detail_text.strip()) > 0 and len(detail_text) > 2500:
+        button = types.InlineKeyboardButton("📋 전체 내용 보기", callback_data=f"details_{hash(detail_text[:50])}")
         buttons.append([button])
     
     keyboard = types.InlineKeyboardMarkup().add(*buttons) if buttons else None
@@ -361,12 +358,12 @@ def get_available_models() -> List[str]:
         return []
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
-    """Stream opencode command output to Telegram with summarization."""
+    """Stream opencode command output to Telegram with summarization and real-time display."""
     try:
-        # Send initial working message (single message)
-        initial_message = escape_markdown_v2("🔄 작업 진행 중...")
+        # Send initial working message
+        initial_message = escape_markdown_v2("🔄 작업 시작...")
         msg = bot.send_message(chat_id, initial_message, parse_mode="MarkdownV2")
-        message_id = msg.message_id
+        initial_message_id = msg.message_id
         
         logger.info(f"Executing opencode command with args: {command_args}")
         process = subprocess.Popen(
@@ -377,22 +374,33 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             bufsize=1  # Line buffered
         )
         
-        # Collect all output first
+        # Collect all output for summary
         collect_data = collect_output_for_summary()
         stderr_output = ""
+        all_output_lines = []
         
-        # Read all output
+        # Read and stream output in real-time
         if process.stdout is not None:
-            lines_buffer = []
             while True:
                 output = process.stdout.readline()
                 if output == '' and process.poll() is not None:
                     break
                 if output:
-                    lines_buffer.append(output.strip())
+                    line = output.strip()
+                    all_output_lines.append(line)
                     
                     # Collect for summary
-                    process_line_for_summary(collect_data, output.strip())
+                    process_line_for_summary(collect_data, line)
+                    
+                    # Process and send real-time output
+                    processed_line = process_output_line(line, chat_id)
+                    if processed_line and len(processed_line.strip()) > 0:
+                        # Escape for Telegram and send
+                        escaped_line = escape_markdown_v2(processed_line)
+                        try:
+                            bot.send_message(chat_id, escaped_line, parse_mode="MarkdownV2")
+                        except Exception as e:
+                            logger.warning(f"Failed to send message: {e}")
         
         # Read stderr
         stderr_output = process.stderr.read() if process.stderr else ""
@@ -403,31 +411,37 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         # Create full text for detail view
         full_text = summary.get("final_text", "")
         
-        # Update the initial message with summary
+        # Send full output log
+        if all_output_lines:
+            full_log = "\n".join(all_output_lines)
+            escaped_log = escape_markdown_v2(f"📋 전체 로그:\n\n{full_log}")
+            # Split into chunks if too long
+            chunk_size = 3500
+            for i in range(0, len(escaped_log), chunk_size):
+                chunk = escaped_log[i:i+chunk_size]
+                try:
+                    bot.send_message(chat_id, chunk, parse_mode="MarkdownV2")
+                except Exception as e:
+                    logger.warning(f"Failed to send log chunk: {e}")
+        
+        # Send summary
         summary_text, keyboard, detail = format_summary_message(summary, full_text)
+        
+        if not summary_text.strip():
+            summary_text = "✅ 작업 완료"
+        
         escaped_summary = escape_only_dots(summary_text)
         
-        # Edit the initial message with the summary
         try:
             if keyboard:
-                bot.edit_message_text(
-                    text=escaped_summary,
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    parse_mode="MarkdownV2",
-                    reply_markup=keyboard
-                )
+                bot.send_message(chat_id, f"\n📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2", reply_markup=keyboard)
             else:
-                bot.edit_message_text(
-                    text=escaped_summary,
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    parse_mode="MarkdownV2"
-                )
+                bot.send_message(chat_id, f"\n📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2")
         except Exception as e:
-            logger.error(f"Error editing message: {e}")
-            # Fall back to sending new message
-            bot.send_message(chat_id, escaped_summary, parse_mode="MarkdownV2", reply_markup=keyboard)
+            logger.error(f"Error sending summary: {e}")
+        
+        # Send completion indicator
+        bot.send_message(chat_id, "━━━━━━─━━━━━━━━━━\n✅ 작업 완료", parse_mode="MarkdownV2")
         
         # Handle errors
         if stderr_output:
