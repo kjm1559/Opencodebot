@@ -4,6 +4,7 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 
 ## Features
 
+- **Summary Mode**: Clean emoji-based summary with detail view button
 - **Status Monitoring**: View current model, project, and session status
 - **Usage Statistics**: Track opencode usage with detailed statistics
 - **Session History**: View and manage recent sessions
@@ -11,7 +12,7 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 - **Model Management**: List and set AI models from opencode
 - **Project Management**: Set and manage project workspace directories
 - **Session Management**: Create, list, set, and reset sessions
-- **Command Execution**: Run OpenCode commands with real-time streaming output
+- **Command Execution**: Run OpenCode commands with summarized output
 - **Intelligent Typing Indicators**: Typing action stays active until command completion
 - **Error Handling**: Comprehensive error reporting and logging
 - **JSON Output Processing**: Properly handles and filters OpenCode JSONL output
@@ -76,7 +77,14 @@ python main.py
 
 ## Implementation Details
 
-The bot uses JSON formatting for all OpenCode commands and filters out `step_start`/`step_finish` messages. It streams output to Telegram in real-time and properly handles large outputs with error management.
+The bot uses JSON formatting for all OpenCode commands and filters out `step_start`/`step_finish` messages. It collects all output and presents a clean summary with:
+
+- **Emoji-based summary**: Files created/modified, bash commands executed, errors
+- **Response preview**: First 300 characters of AI response
+- **Detail view button**: Optional button to show full output
+- **Single message update**: Initial "working" message is updated with results
+
+This provides a cleaner Telegram experience with minimal scrolling and easy progress tracking.
 
 ## Folder Structure
 

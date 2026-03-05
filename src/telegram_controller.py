@@ -86,6 +86,116 @@ def escape_only_dots(text: str) -> str:
     """Escape only '.' for Telegram MarkdownV2 ('.' -> '\\.')."""
     return text.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=").replace("+", r"\+")
 
+def collect_output_for_summary():
+    """Initialize output collection."""
+    return {"lines": [], "summary": None, "full_text": ""}
+
+def process_line_for_summary(collect_data: dict, line: str) -> None:
+    """Process a line and add to collection."""
+    if collect_data["lines"] is None:
+        collect_data["lines"] = []
+    
+    try:
+        if not line:
+            return
+        obj = json.loads(line)
+        collect_data["lines"].append(obj)
+    except json.JSONDecodeError:
+        pass
+
+def summarize_output(lines: List[dict]) -> dict:
+    """Summarize output into key metrics."""
+    summary = {
+        "files_created": 0,
+        "files_modified": 0,
+        "files_read": 0,
+        "bash_commands": 0,
+        "errors": 0,
+        "final_text": ""
+    }
+    
+    for obj in lines:
+        msg_type = obj.get("type")
+        
+        if msg_type == "file":
+            summary["files_created"] += 1
+        elif msg_type == "directory":
+            pass  # Ignore directories in summary
+        elif msg_type == "tool_use":
+            tool_info = obj.get("part", {}).get("tool", "")
+            if "read" in tool_info:
+                summary["files_read"] += 1
+            elif "write" in tool_info:
+                summary["files_created"] += 1
+            elif "edit" in tool_info:
+                summary["files_modified"] += 1
+            elif "bash" in tool_info:
+                summary["bash_commands"] += 1
+            elif "glob" in tool_info:
+                pass  # File search
+            elif "grep" in tool_info:
+                pass  # Text search
+        elif msg_type == "text":
+            text = obj.get("text", "") or obj.get("part", {}).get("text", "")
+            if text.strip():
+                summary["final_text"] += text + "\n"
+        elif msg_type == "error":
+            summary["errors"] += 1
+    
+    return summary
+
+def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
+    """Format summary into a readable message with inline keyboard."""
+    from telebot import types
+    
+    # Build emoji-based summary
+    emoji_parts = []
+    
+    if summary["files_created"] > 0:
+        emoji_parts.append(f"📄 파일 {summary['files_created']}개 작성")
+    if summary["files_modified"] > 0:
+        emoji_parts.append(f"✏️ 파일 {summary['files_modified']}개 수정")
+    if summary["files_read"] > 0:
+        emoji_parts.append(f"📖 파일 {summary['files_read']}개 확인")
+    if summary["bash_commands"] > 0:
+        emoji_parts.append(f"💻 명령어 {summary['bash_commands']}개 실행")
+    
+    if summary["errors"] > 0:
+        emoji_parts.append(f"❌ 오류 {summary['errors']}개 발생")
+    
+    if not emoji_parts and summary["final_text"]:
+        emoji_parts.append("✅ 작업 완료")
+    
+    # Create message text
+    message_lines = []
+    
+    if emoji_parts:
+        message_lines.append("✨ 작업 SUMMARY\n")
+        for item in emoji_parts:
+            message_lines.append(f"  • {item}\n")
+    
+    # Add response text if available (max 150 chars for preview)
+    if summary["final_text"]:
+        text = summary["final_text"].strip()
+        if len(text) > 300:
+            text = text[:300] + "..."
+        
+        # Escape special chars for summary
+        escaped_text = text.replace("\n", " ").strip()
+        
+        message_lines.append("\n📝 응답 미리보기를:\n")
+        message_lines.append(escaped_text)
+    
+    # Create inline keyboard for detail view
+    buttons = []
+    if detail_text and len(detail_text.strip()) > 0:
+        button = types.InlineKeyboardButton("📋 세부 내용 보기", callback_data=f"details_{hash(detail_text[:50])}")
+        buttons.append([button])
+    
+    keyboard = types.InlineKeyboardMarkup().add(*buttons) if buttons else None
+    
+    return "".join(message_lines), keyboard, detail_text
+
 def process_output_line(line: str, chat_id: str) -> str:
     """Process a single line of opencode output and format it for Telegram."""
     try:
@@ -251,10 +361,13 @@ def get_available_models() -> List[str]:
         return []
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
-    """Stream opencode command output to Telegram."""
+    """Stream opencode command output to Telegram with summarization."""
     try:
-        # Send typing indicator at the start of command execution
-        bot.send_chat_action(chat_id, 'typing')
+        # Send initial working message (single message)
+        initial_message = escape_markdown_v2("🔄 작업 진행 중...")
+        msg = bot.send_message(chat_id, initial_message, parse_mode="MarkdownV2")
+        message_id = msg.message_id
+        
         logger.info(f"Executing opencode command with args: {command_args}")
         process = subprocess.Popen(
             ["opencode"] + command_args,
@@ -264,52 +377,76 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             bufsize=1  # Line buffered
         )
         
-        # Read output line by line
+        # Collect all output first
+        collect_data = collect_output_for_summary()
+        stderr_output = ""
+        
+        # Read all output
         if process.stdout is not None:
+            lines_buffer = []
             while True:
                 output = process.stdout.readline()
                 if output == '' and process.poll() is not None:
                     break
                 if output:
-                    # Add proper handling for the case when process.stdout might be None
-                    output_clean = output.strip() if output else ""
-                    if output_clean:
-                        logger.info(f"Raw opencode output line: {output_clean}")
-                        formatted = process_output_line(output_clean, chat_id)
-                        if formatted and formatted.strip():  # Check that formatted is not empty
-                            # Escape only dots for Telegram MarkdownV2
-                            escaped_message = escape_only_dots(formatted)
-                            # Send formatted message to Telegram
-                            try:
-                                logger.info(f"Sending to Telegram: {escaped_message[:100]}...")  # Log first 100 chars
-                                bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
-                            except Exception as e:
-                                logger.error(f"Error sending message to Telegram: {e}")
-                        elif formatted:
-                            logger.warning("Skipping empty formatted message")
+                    lines_buffer.append(output.strip())
+                    
+                    # Collect for summary
+                    process_line_for_summary(collect_data, output.strip())
         
-        # Check for errors
+        # Read stderr
         stderr_output = process.stderr.read() if process.stderr else ""
+        
+        # Generate summary from collected data
+        summary = summarize_output(collect_data.get("lines", []))
+        
+        # Create full text for detail view
+        full_text = summary.get("final_text", "")
+        
+        # Update the initial message with summary
+        summary_text, keyboard, detail = format_summary_message(summary, full_text)
+        escaped_summary = escape_only_dots(summary_text)
+        
+        # Edit the initial message with the summary
+        try:
+            if keyboard:
+                bot.edit_message_text(
+                    text=escaped_summary,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    parse_mode="MarkdownV2",
+                    reply_markup=keyboard
+                )
+            else:
+                bot.edit_message_text(
+                    text=escaped_summary,
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    parse_mode="MarkdownV2"
+                )
+        except Exception as e:
+            logger.error(f"Error editing message: {e}")
+            # Fall back to sending new message
+            bot.send_message(chat_id, escaped_summary, parse_mode="MarkdownV2", reply_markup=keyboard)
+        
+        # Handle errors
         if stderr_output:
             logger.error(f"opencode stderr: {stderr_output}")
-            escaped_error = escape_markdown_v2(f"Error: {stderr_output}")
+            escaped_error = escape_markdown_v2(f"⚠️ 오류: {stderr_output}")
             bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
         
-        # Check the return code
+        # Check return code
         return_code = process.poll()
         if return_code != 0:
             logger.error(f"opencode command exited with code {return_code}")
-            escaped_error = escape_markdown_v2(f"Command failed with exit code {return_code}")
+            escaped_error = escape_markdown_v2(f"❌ 명령 실패 (코드: {return_code})")
             bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
         else:
             logger.info("Command completed successfully")
-            # Send completion message to Telegram
-            escaped_completion = escape_markdown_v2("Operation completed successfully.")
-            bot.send_message(chat_id, escaped_completion, parse_mode="MarkdownV2")
-            
+        
     except Exception as e:
         logger.error(f"Error streaming opencode output: {e}")
-        escaped_error = escape_markdown_v2(f"Error occurred while running command: {str(e)}")
+        escaped_error = escape_markdown_v2(f"❌ 오류: {str(e)}")
         bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
 
 @bot.message_handler(commands=['project'])
