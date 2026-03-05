@@ -4,19 +4,17 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 
 ## Features
 
+- **Real-time Status Updates**: Tool execution status (file read/write, bash commands, etc.)
 - **Summary Mode**: Clean emoji-based summary with detail view button
+- **Logs to Terminal**: Full command output streamed to terminal, only summary to Telegram
+- **Project Management**: List, switch, and clone projects with session awareness
+- **Session Management**: Create, list, set, and reset sessions
+- **Model Management**: List and set AI models from opencode
 - **Status Monitoring**: View current model, project, and session status
 - **Usage Statistics**: Track opencode usage with detailed statistics
 - **Session History**: View and manage recent sessions
 - **Command Cancellation**: Cancel running commands
-- **Model Management**: List and set AI models from opencode
-- **Project Management**: Set and manage project workspace directories
-- **Session Management**: Create, list, set, and reset sessions
-- **Command Execution**: Run OpenCode commands with summarized output
-- **Intelligent Typing Indicators**: Typing action stays active until command completion
 - **Error Handling**: Comprehensive error reporting and logging
-- **JSON Output Processing**: Properly handles and filters OpenCode JSONL output
-- **Workspace Support**: Dedicated workspace directory for project management (git clone, folders)
 
 ## Commands
 
@@ -31,8 +29,18 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 - `/model <model_name>` - Set current model (e.g., `/model ollama/qwen3.5:27b`)
 
 ### Project Management
-- `/project [path]` - Set or show current project path
-- `/project /path/to/workspace` - Set workspace directory for project operations
+- `/project` - List all projects in `~/projects/`
+- `/project <number>` - Switch to project by number (keeps existing session)
+- `/project <project-name>` - Switch to project by name (keeps existing session)
+- `/project <git-url>` - Clone new project from git URL (creates new session)
+
+**Examples:**
+```bash
+/project              # List all projects
+/project 1            # Switch to first project (session preserved)
+/project myproject    # Switch to 'myproject' (session preserved)
+/project git@github.com:user/repo.git  # Clone and create new session
+```
 
 ### Session Management
 - `/session` - List available sessions
@@ -46,10 +54,13 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 - `/help` - Show help message
 - Any message - Run OpenCode command with current project/session context
 
-### Typing Control
-- Typing indicators sent only at command start
-- Remains active until command completion
-- "Command completed successfully" signals typing indicator removal
+## Output Behavior
+
+- **Terminal**: Full command output streamed in real-time
+- **Telegram**: Only summary with:
+  - Real-time tool status (📖 파일 읽는 중..., ✏️ 파일 수정 중..., 💻 명령어 실행 중...)
+  - Final summary with emoji-based statistics
+  - AI response preview (up to 2500 characters)
 
 ## Requirements
 
@@ -72,19 +83,33 @@ export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional, for restrictin
 
 3. Run the bot:
 ```bash
-python main.py
+python src/telegram_controller.py
 ```
+
+## Project Management
+
+Projects are stored in `~/projects/` directory:
+
+- `/project` lists all git repositories in `~/projects/`
+- Switching between projects preserves the current session
+- Cloning a new project creates a new session
+- Use `/reset` to manually create a new session
 
 ## Implementation Details
 
-The bot uses JSON formatting for all OpenCode commands and filters out `step_start`/`step_finish` messages. It collects all output and presents a clean summary with:
+The bot uses JSON formatting for all OpenCode commands:
 
-- **Emoji-based summary**: Files created/modified, bash commands executed, errors
-- **Response preview**: First 300 characters of AI response
-- **Detail view button**: Optional button to show full output
-- **Single message update**: Initial "working" message is updated with results
+- **Filters**: `step_start`/`step_finish` messages excluded from Telegram
+- **Real-time**: Tool execution status sent to Telegram (e.g., "📖 파일 읽는 중...")
+- **Terminal**: Full output streamed to stdout for debugging
+- **Telegram**: Only summary with emoji statistics and AI response preview
 
-This provides a cleaner Telegram experience with minimal scrolling and easy progress tracking.
+Summary includes:
+- 📄 Files created
+- ✏️ Files modified  
+- 📖 Files read
+- 💻 Bash commands executed
+- ❌ Errors
 
 ## Folder Structure
 
@@ -92,9 +117,6 @@ This provides a cleaner Telegram experience with minimal scrolling and easy prog
 opencode-telegram-bot/
 ├── src/
 │   └── telegram_controller.py     # Main bot implementation
-├── workspace/                     # Project workspace directory
-│   ├── project1/                  # Managed projects
-│   └── project2/
 ├── test/
 │   └── test_telegram_controller.py # Unit tests
 ├── main.py                        # Entry point script
@@ -102,14 +124,6 @@ opencode-telegram-bot/
 ├── README.md                      # This documentation
 └── AGENTS.md                      # Implementation specification
 ```
-
-## Workspace Management
-
-The bot supports a `/workspace` directory for project management:
-
-- Use `/project /home/mj/project/Opencodebot/workspace/myproject` to set a project path
-- Multiple projects can be managed in separate subdirectories
-- Sessions are automatically associated with projects
 
 ## License
 
