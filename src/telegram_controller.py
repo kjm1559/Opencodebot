@@ -36,6 +36,7 @@ except ImportError as e:
 try:
     from telebot import types
     bot.set_my_commands([
+        types.BotCommand("project", "Set/List current project path"),
         types.BotCommand("session", "List available sessions"),
         types.BotCommand("set_session", "Set current session"),
         types.BotCommand("current_session", "Show current session"),
@@ -48,8 +49,9 @@ try:
 except Exception as e:
     logger.error(f"Failed to set bot commands: {e}")
 
-# In-memory session storage (per chat)
+# In-memory storage (per chat)
 session_store: Dict[str, Dict[str, Any]] = {}
+project_store: Dict[str, str] = {}
 
 # Configuration constants
 COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
@@ -216,6 +218,14 @@ def get_current_session_id(chat_id: str) -> str:
     session_id = session_store[chat_id].get("current_session_id")
     return session_id if session_id is not None else ""
 
+def set_current_project(chat_id: str, project_path: str) -> None:
+    """Set the current project path for a chat."""
+    project_store[chat_id] = project_path
+
+def get_current_project(chat_id: str) -> str:
+    """Get the current project path for a chat."""
+    return project_store.get(chat_id, "")
+
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
     try:
@@ -278,6 +288,40 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         escaped_error = escape_markdown_v2(f"Error occurred while running command: {str(e)}")
         bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
 
+@bot.message_handler(commands=['project'])
+def handle_project_command(message):
+    """Handle /project command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /project command from chat {chat_id}")
+    
+    try:
+        # Get project path from message
+        project_path = message.text[len('/project'):].strip()
+        
+        if not project_path:
+            # Show current project path
+            current_project = get_current_project(chat_id)
+            if current_project:
+                escaped_message = escape_markdown_v2(f"Current project: {current_project}")
+            else:
+                escaped_message = escape_markdown_v2("No project set. Use /project /path/to/project to set one.")
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        else:
+            # Validate that the path exists
+            import os as os_module
+            if os_module.path.exists(project_path):
+                set_current_project(chat_id, project_path)
+                escaped_message = escape_markdown_v2(f"Project set to: {project_path}")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+            else:
+                escaped_message = escape_markdown_v2(f"Path does not exist: {project_path}")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                
+    except Exception as e:
+        logger.error(f"Error handling /project command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
 @bot.message_handler(commands=['help'])
 def handle_help_command(message):
     """Handle /help command."""
@@ -288,6 +332,7 @@ def handle_help_command(message):
         help_text = (
             "OpenCode Telegram Controller Help:\n\n"
             "Commands:\n"
+            "/project [path] - Set or show current project path\n"
             "/session - List available sessions\n"
             "/set_session <id> - Set current session\n"
             "/current_session - Show current session\n"
@@ -470,13 +515,22 @@ def handle_message(message):
     chat_id = str(message.chat.id)
     logger.info(f"Received message from chat {chat_id}: {message.text}")
     
+    # Get current project path
+    current_project = get_current_project(chat_id)
+    
+    # Build base command with project path if set
+    base_args: List[str] = []
+    if current_project:
+        base_args.append(current_project)
+    base_args.append("run")
+    
     # Check if we have an active session
     current_session_id = get_current_session_id(chat_id)
     
     if current_session_id:
         # Use the existing session
         logger.info(f"Using existing session {current_session_id}")
-        command_args = ["run", "--session", current_session_id, message.text, "--format", "json"]
+        command_args = base_args + ["--session", current_session_id, message.text, "--format", "json"]
         stream_opencode_output(chat_id, command_args)
     else:
         # Check if there are existing sessions to use instead of always creating a new one
@@ -494,12 +548,12 @@ def handle_message(message):
                 selected_session_id = latest_session['id']
                 
                 logger.info(f"Using latest existing session {selected_session_id}")
-                command_args = ["run", "--session", selected_session_id, message.text, "--format", "json"]
+                command_args = base_args + ["--session", selected_session_id, message.text, "--format", "json"]
                 stream_opencode_output(chat_id, command_args)
             else:
                 # No existing sessions, create a new one using --continue
                 logger.info("No existing sessions, creating new session with --continue")
-                command_args = ["run", "--continue", message.text, "--format", "json"]
+                command_args = base_args + ["--continue", message.text, "--format", "json"]
                 
                 # Execute the command, but just send a message to user to indicate it's running
                 escaped_message = escape_markdown_v2("Executing command... Please wait.")
@@ -514,7 +568,7 @@ def handle_message(message):
             logger.error(f"Error checking existing sessions: {e}")
             # If we can't check sessions, fall back to creating a new one
             logger.info("Falling back to creating new session with --continue")
-            command_args = ["run", "--continue", message.text, "--format", "json"]
+            command_args = base_args + ["--continue", message.text, "--format", "json"]
             
             escaped_message = escape_markdown_v2("Executing command... Please wait.")
             bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")

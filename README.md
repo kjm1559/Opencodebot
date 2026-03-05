@@ -4,13 +4,19 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 
 ## Features
 
+- **Project Management**: Set and manage project workspace directories
 - **Session Management**: Create, list, set, and reset sessions
 - **Command Execution**: Run OpenCode commands with real-time streaming output
 - **Intelligent Typing Indicators**: Typing action stays active until command completion
 - **Error Handling**: Comprehensive error reporting and logging
 - **JSON Output Processing**: Properly handles and filters OpenCode JSONL output
+- **Workspace Support**: Dedicated workspace directory for project management (git clone, folders)
 
 ## Commands
+
+### Project Management
+- `/project [path]` - Set or show current project path
+- `/project /path/to/workspace` - Set workspace directory for project operations
 
 ### Session Management
 - `/session` - List available sessions
@@ -19,6 +25,10 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 - `/new_session` - Create new session
 - `/compact <session_id>` - Compact current session
 - `/reset` - Clear current session
+
+### General
+- `/help` - Show help message
+- Any message - Run OpenCode command with current project/session context
 
 ### Typing Control
 - Typing indicators sent only at command start
@@ -59,6 +69,9 @@ The bot uses JSON formatting for all OpenCode commands and filters out `step_sta
 opencode-telegram-bot/
 ├── src/
 │   └── telegram_controller.py     # Main bot implementation
+├── workspace/                     # Project workspace directory
+│   ├── project1/                  # Managed projects
+│   └── project2/
 ├── test/
 │   └── test_telegram_controller.py # Unit tests
 ├── main.py                        # Entry point script
@@ -66,6 +79,14 @@ opencode-telegram-bot/
 ├── README.md                      # This documentation
 └── AGENTS.md                      # Implementation specification
 ```
+
+## Workspace Management
+
+The bot supports a `/workspace` directory for project management:
+
+- Use `/project /home/mj/project/Opencodebot/workspace/myproject` to set a project path
+- Multiple projects can be managed in separate subdirectories
+- Sessions are automatically associated with projects
 
 ## License
 
