@@ -358,12 +358,11 @@ def get_available_models() -> List[str]:
         return []
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
-    """Stream opencode command output to Telegram with summarization and real-time display."""
+    """Stream opencode command output to terminal, send only summary to Telegram."""
     try:
-        # Send initial working message
+        # Send initial working message to Telegram
         initial_message = escape_markdown_v2("🔄 작업 시작...")
-        msg = bot.send_message(chat_id, initial_message, parse_mode="MarkdownV2")
-        initial_message_id = msg.message_id
+        bot.send_message(chat_id, initial_message, parse_mode="MarkdownV2")
         
         logger.info(f"Executing opencode command with args: {command_args}")
         process = subprocess.Popen(
@@ -376,10 +375,8 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         # Collect all output for summary
         collect_data = collect_output_for_summary()
-        stderr_output = ""
-        all_output_lines = []
         
-        # Read and stream output in real-time
+        # Stream output to terminal (stdout)
         if process.stdout is not None:
             while True:
                 output = process.stdout.readline()
@@ -387,44 +384,26 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                     break
                 if output:
                     line = output.strip()
-                    all_output_lines.append(line)
-                    
+                    # Print raw line to terminal
+                    print(line, flush=True)
                     # Collect for summary
                     process_line_for_summary(collect_data, line)
-                    
-                    # Process and send real-time output
-                    processed_line = process_output_line(line, chat_id)
-                    if processed_line and len(processed_line.strip()) > 0:
-                        # Escape for Telegram and send
-                        escaped_line = escape_markdown_v2(processed_line)
-                        try:
-                            bot.send_message(chat_id, escaped_line, parse_mode="MarkdownV2")
-                        except Exception as e:
-                            logger.warning(f"Failed to send message: {e}")
         
-        # Read stderr
-        stderr_output = process.stderr.read() if process.stderr else ""
+        # Stream stderr to terminal
+        if process.stderr is not None:
+            for line in process.stderr:
+                print(f"STDERR: {line.strip()}", flush=True)
+        
+        # Check return code
+        return_code = process.poll()
+        if return_code != 0:
+            logger.error(f"opencode command exited with code {return_code}")
         
         # Generate summary from collected data
         summary = summarize_output(collect_data.get("lines", []))
-        
-        # Create full text for detail view
         full_text = summary.get("final_text", "")
         
-        # Send full output log
-        if all_output_lines:
-            full_log = "\n".join(all_output_lines)
-            escaped_log = escape_markdown_v2(f"📋 전체 로그:\n\n{full_log}")
-            # Split into chunks if too long
-            chunk_size = 3500
-            for i in range(0, len(escaped_log), chunk_size):
-                chunk = escaped_log[i:i+chunk_size]
-                try:
-                    bot.send_message(chat_id, chunk, parse_mode="MarkdownV2")
-                except Exception as e:
-                    logger.warning(f"Failed to send log chunk: {e}")
-        
-        # Send summary
+        # Send summary to Telegram
         summary_text, keyboard, detail = format_summary_message(summary, full_text)
         
         if not summary_text.strip():
@@ -443,19 +422,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         # Send completion indicator
         bot.send_message(chat_id, "━━━━━━─━━━━━━━━━━\n✅ 작업 완료", parse_mode="MarkdownV2")
         
-        # Handle errors
-        if stderr_output:
-            logger.error(f"opencode stderr: {stderr_output}")
-            escaped_error = escape_markdown_v2(f"⚠️ 오류: {stderr_output}")
-            bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
-        
-        # Check return code
-        return_code = process.poll()
-        if return_code != 0:
-            logger.error(f"opencode command exited with code {return_code}")
-            escaped_error = escape_markdown_v2(f"❌ 명령 실패 (코드: {return_code})")
-            bot.send_message(chat_id, escaped_error, parse_mode="MarkdownV2")
-        else:
+        if return_code == 0:
             logger.info("Command completed successfully")
         
     except Exception as e:
