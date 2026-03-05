@@ -9,7 +9,7 @@ import re
 import json
 import subprocess
 import sys
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 
 # Set up logging
@@ -357,6 +357,24 @@ def get_available_models() -> List[str]:
     except Exception:
         return []
 
+def get_tool_status_message(tool_name: str, status: str) -> Optional[str]:
+    """Get a short status message for tool execution."""
+    status_messages = {
+        ("read_file", "reading"): "📖 파일 읽는 중...",
+        ("edit_file", "editing"): "✏️ 파일 수정 중...",
+        ("write_file", "writing"): "📄 파일 작성 중...",
+        ("bash", "running"): "💻 명령어 실행 중...",
+        ("webfetch", "fetching"): "🌐 웹 검색 중...",
+        ("glob", "searching"): "🔍 파일 검색 중...",
+        ("grep", "searching"): "🔍 텍스트 검색 중..."
+    }
+    
+    # Extract base tool name
+    base_tool = tool_name.split("_")[0] if "_" in tool_name else tool_name
+    base_status = status.split("_")[0] if "_" in status else status
+    
+    return status_messages.get((tool_name, status))
+
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to terminal, send only summary to Telegram."""
     try:
@@ -375,6 +393,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         # Collect all output for summary
         collect_data = collect_output_for_summary()
+        last_tool_status = None  # Track last tool status to avoid duplicate messages
         
         # Stream output to terminal (stdout)
         if process.stdout is not None:
@@ -386,8 +405,30 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                     line = output.strip()
                     # Print raw line to terminal
                     print(line, flush=True)
+                    
                     # Collect for summary
                     process_line_for_summary(collect_data, line)
+                    
+                    # Check for tool_use and send status to Telegram
+                    try:
+                        obj = json.loads(line)
+                        if obj.get("type") == "tool_use":
+                            part = obj.get("part", {})
+                            tool_name = part.get("tool", "")
+                            state = part.get("state", {})
+                            status = state.get("status", "")
+                            
+                            # Get status message
+                            status_msg = get_tool_status_message(tool_name, status)
+                            if status_msg and status_msg != last_tool_status and "finished" not in status:
+                                last_tool_status = status_msg
+                                try:
+                                    escaped_status = escape_markdown_v2(status_msg)
+                                    bot.send_message(chat_id, escaped_status, parse_mode="MarkdownV2")
+                                except Exception as e:
+                                    logger.warning(f"Failed to send status message: {e}")
+                    except json.JSONDecodeError:
+                        pass
         
         # Stream stderr to terminal
         if process.stderr is not None:
