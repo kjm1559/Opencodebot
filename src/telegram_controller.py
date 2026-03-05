@@ -487,36 +487,75 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
 
 @bot.message_handler(commands=['project'])
 def handle_project_command(message):
-    """Handle /project command."""
+    """Handle /project command - set project (git clone if URL) and create new session."""
     chat_id = str(message.chat.id)
     logger.info(f"Received /project command from chat {chat_id}")
     
     try:
-        # Get project path from message
-        project_path = message.text[len('/project'):].strip()
+        # Get project path/URL from message
+        project_input = message.text[len('/project'):].strip()
         
-        if not project_path:
+        if not project_input:
             # Show current project path
             current_project = get_current_project(chat_id)
             if current_project:
-                escaped_message = escape_markdown_v2(f"Current project: {current_project}")
+                escaped_message = escape_markdown_v2(f"📁 Current project: {current_project}")
             else:
-                escaped_message = escape_markdown_v2("No project set. Use /project /path/to/project to set one.")
+                escaped_message = escape_markdown_v2("No project set. Use /project [path|git-url] to set one.")
             bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         else:
-            # Validate that the path exists
-            import os as os_module
-            if os_module.path.exists(project_path):
-                set_current_project(chat_id, project_path)
-                escaped_message = escape_markdown_v2(f"Project set to: {project_path}")
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-            else:
-                escaped_message = escape_markdown_v2(f"Path does not exist: {project_path}")
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+            # Check if it's a git URL
+            is_git_url = project_input.startswith(('git@', 'http://', 'https://', 'git://'))
+            
+            if is_git_url:
+                # Git clone the repository
+                escaped_message = escape_markdown_v2("🔄 Cloning repository...")
+                bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
                 
+                # Extract repo name from URL
+                repo_name = project_input.split('/')[-1].replace('.git', '')
+                clone_path = os.path.join(os.path.expanduser('~'), 'projects', repo_name)
+                
+                # Create parent directory if it doesn't exist
+                os.makedirs(os.path.dirname(clone_path), exist_ok=True)
+                
+                # Clone repository
+                clone_cmd = subprocess.run(
+                    ['git', 'clone', project_input, clone_path],
+                    capture_output=True,
+                    text=True,
+                    timeout=300
+                )
+                
+                if clone_cmd.returncode != 0:
+                    escaped_error = escape_markdown_v2(f"❌ Clone failed: {clone_cmd.stderr}")
+                    bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+                    return
+                
+                project_path = clone_path
+                logger.info(f"Cloned {project_input} to {clone_path}")
+            else:
+                # Local path
+                if not os.path.exists(project_input):
+                    escaped_message = escape_markdown_v2(f"❌ Path does not exist: {project_input}")
+                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                    return
+                project_path = project_input
+            
+            # Set project and RESET session (create new session for this project)
+            set_current_project(chat_id, project_path)
+            set_current_session_id(chat_id, "")  # Clear session for new project
+            
+            escaped_message = escape_markdown_v2(f"📁 Project set to: {project_path}\n✨ New session will be created for next command")
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                
+    except subprocess.TimeoutExpired:
+        logger.error("Git clone timed out")
+        escaped_error = escape_markdown_v2("❌ Clone timed out. Try again with a smaller repository.")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
     except Exception as e:
         logger.error(f"Error handling /project command: {e}")
-        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        escaped_error = escape_markdown_v2(f"❌ Error: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
 @bot.message_handler(commands=['help'])
