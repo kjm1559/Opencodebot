@@ -4,6 +4,10 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 
 ## Features
 
+- **Status Monitoring**: View current model, project, and session status
+- **Usage Statistics**: Track opencode usage with detailed statistics
+- **Session History**: View and manage recent sessions
+- **Command Cancellation**: Cancel running commands
 - **Model Management**: List and set AI models from opencode
 - **Project Management**: Set and manage project workspace directories
 - **Session Management**: Create, list, set, and reset sessions
@@ -14,6 +18,12 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 - **Workspace Support**: Dedicated workspace directory for project management (git clone, folders)
 
 ## Commands
+
+### Monitoring & Control
+- `/status` - Show current status (model, project, session)
+- `/stats` - Show opencode usage statistics
+- `/history` - Show recent session history (last 10)
+- `/cancel` - Cancel currently running command
 
 ### Model Management
 - `/model` - List available models and show current model

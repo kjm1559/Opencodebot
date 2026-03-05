@@ -36,6 +36,10 @@ except ImportError as e:
 try:
     from telebot import types
     bot.set_my_commands([
+        types.BotCommand("status", "Show current status (model, project, session)"),
+        types.BotCommand("stats", "Show opencode usage statistics"),
+        types.BotCommand("history", "Show recent session history"),
+        types.BotCommand("cancel", "Cancel current command"),
         types.BotCommand("project", "Set/List current project path"),
         types.BotCommand("model", "List/Set current model"),
         types.BotCommand("session", "List available sessions"),
@@ -54,6 +58,7 @@ except Exception as e:
 session_store: Dict[str, Dict[str, Any]] = {}
 project_store: Dict[str, str] = {}
 model_store: Dict[str, str] = {}
+active_process: Dict[str, Any] = {}  # Track active processes for cancel
 
 # Configuration constants
 COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
@@ -351,13 +356,17 @@ def handle_help_command(message):
         help_text = (
             "OpenCode Telegram Controller Help:\n\n"
             "Commands:\n"
+            "/status - Show current status\n"
+            "/stats - Show usage statistics\n"
+            "/history - Show recent sessions\n"
+            "/cancel - Cancel running command\n"
             "/project [path] - Set or show current project path\n"
             "/model [name] - List/set current model\n"
             "/session - List available sessions\n"
-            "/set_session <id> - Set current session\n"
+            "/set_session \u003cid\u003e - Set current session\n"
             "/current_session - Show current session\n"
             "/new_session - Create new session\n"
-            "/compact <session_id> - Compact current session\n"
+            "/compact \u003csession_id\u003e - Compact current session\n"
             "/reset - Clear current session\n"
             "/help - Show this help message\n\n"
             "Simply type any message to run opencode commands."
@@ -579,6 +588,114 @@ def handle_model_command(message):
                 
     except Exception as e:
         logger.error(f"Error handling /model command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['status'])
+def handle_status_command(message):
+    """Handle /status command - show current configuration."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /status command from chat {chat_id}")
+    
+    try:
+        bot.send_chat_action(chat_id, 'typing')
+        
+        current_model = get_current_model(chat_id)
+        current_project = get_current_project(chat_id)
+        current_session = get_current_session_id(chat_id)
+        
+        response = "📋 Current Status:\n\n"
+        response += "🤖 Model: " + (current_model if current_model else "Not set (using default)") + "\n"
+        response += "📁 Project: " + (current_project if current_project else "Not set") + "\n"
+        response += "🔀 Session: " + (current_session if current_session else "None (will create new)")
+        
+        escaped_message = escape_markdown_v2(response)
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        
+    except Exception as e:
+        logger.error(f"Error handling /status command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['stats'])
+def handle_stats_command(message):
+    """Handle /stats command - show opencode usage statistics."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /stats command from chat {chat_id}")
+    
+    try:
+        bot.send_chat_action(chat_id, 'typing')
+        
+        result = run_opencode_command(["stats"], timeout=10)
+        stats_output = result.stdout
+        
+        escaped_message = escape_markdown_v2(f"📊 Opencode Statistics:\n\n{stats_output}")
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        
+    except Exception as e:
+        logger.error(f"Error handling /stats command: {e}")
+        escaped_error = escape_markdown_v2(f"Error fetching stats: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['history'])
+def handle_history_command(message):
+    """Handle /history command - show recent sessions."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /history command from chat {chat_id}")
+    
+    try:
+        bot.send_chat_action(chat_id, 'typing')
+        
+        result = run_opencode_command(["session", "list", "--format", "json"])
+        sessions = json.loads(result.stdout)
+        
+        if not sessions:
+            escaped_message = escape_markdown_v2("No session history found.")
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+            return
+        
+        # Sort by updated/created timestamp (most recent first)
+        sorted_sessions = sorted(sessions, key=lambda x: x.get('updated', x.get('created', 0)), reverse=True)
+        
+        response = "📜 Recent Sessions (last 10):\n\n"
+        current_session = get_current_session_id(chat_id)
+        
+        for idx, session in enumerate(sorted_sessions[:10], 1):
+            session_id = session.get('id', 'Unknown')
+            is_current = "✅" if session_id == current_session else "  "
+            response += f"{is_current} {idx}. {session_id}\n"
+        
+        escaped_message = escape_markdown_v2(response)
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        
+    except Exception as e:
+        logger.error(f"Error handling /history command: {e}")
+        escaped_error = escape_markdown_v2(f"Error fetching history: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['cancel'])
+def handle_cancel_command(message):
+    """Handle /cancel command - cancel current running command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /cancel command from chat {chat_id}")
+    
+    try:
+        if chat_id in active_process:
+            process = active_process[chat_id]
+            if process.poll() is None:  # Process still running
+                try:
+                    process.terminate()
+                    bot.reply_to(message, "❌ Command cancelled.", parse_mode="MarkdownV2")
+                except ProcessLookupError:
+                    bot.reply_to(message, "❌ Command already terminated.", parse_mode="MarkdownV2")
+            else:
+                bot.reply_to(message, "❌ No command is currently running.", parse_mode="MarkdownV2")
+            del active_process[chat_id]
+        else:
+            bot.reply_to(message, "❌ No command is currently running.", parse_mode="MarkdownV2")
+            
+    except Exception as e:
+        logger.error(f"Error handling /cancel command: {e}")
         escaped_error = escape_markdown_v2(f"Error: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
