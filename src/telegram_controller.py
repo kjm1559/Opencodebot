@@ -340,6 +340,23 @@ def get_current_project(chat_id: str) -> str:
     """Get the current project path for a chat."""
     return project_store.get(chat_id, "")
 
+def list_projects() -> List[str]:
+    """List all projects in ~/projects/ directory."""
+    projects_dir = os.path.expanduser("~/projects")
+    if not os.path.exists(projects_dir):
+        return []
+    
+    projects = []
+    for item in os.listdir(projects_dir):
+        item_path = os.path.join(projects_dir, item)
+        if os.path.isdir(item_path) and os.path.exists(os.path.join(item_path, ".git")):
+            projects.append(item)
+    return sorted(projects)
+
+def get_project_path(project_name: str) -> str:
+    """Get full path for a project by name."""
+    return os.path.join(os.path.expanduser("~/projects"), project_name)
+
 def set_current_model(chat_id: str, model_name: str) -> None:
     """Set the current model for a chat."""
     model_store[chat_id] = model_name
@@ -487,7 +504,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
 
 @bot.message_handler(commands=['project'])
 def handle_project_command(message):
-    """Handle /project command - set project (git clone if URL) and create new session."""
+    """Handle /project command - list projects, switch to project, or clone new project."""
     chat_id = str(message.chat.id)
     logger.info(f"Received /project command from chat {chat_id}")
     
@@ -496,14 +513,48 @@ def handle_project_command(message):
         project_input = message.text[len('/project'):].strip()
         
         if not project_input:
-            # Show current project path
+            # List all projects
+            projects = list_projects()
             current_project = get_current_project(chat_id)
-            if current_project:
-                escaped_message = escape_markdown_v2(f"📁 Current project: {current_project}")
+            
+            if not projects:
+                escaped_message = escape_markdown_v2("📁 No projects in ~/projects/\n\nYou can clone a project with: /project <git-url>")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
             else:
-                escaped_message = escape_markdown_v2("No project set. Use /project [path|git-url] to set one.")
-            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                response = "📁 Available Projects:\n\n"
+                for i, proj in enumerate(projects, 1):
+                    current_marker = "✅" if current_project and proj in current_project else " "
+                    response += f"{current_marker} {i}. {proj}\n"
+                
+                if current_project:
+                    response += f"\n📍 Current: {current_project}"
+                else:
+                    response += "\n\n📍当前 프로젝트 없음"
+                    response += "\n\nUse /project <number> to switch to a project"
+                    response += "\nOr /project <git-url> to clone a new project"
+                
+                escaped_message = escape_markdown_v2(response)
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         else:
+            # Check if it's a number (project switch)
+            if project_input.isdigit():
+                project_index = int(project_input) - 1
+                projects = list_projects()
+                
+                if project_index >= 0 and project_index < len(projects):
+                    project_name = projects[project_index]
+                    project_path = get_project_path(project_name)
+                    
+                    # Set project WITHOUT resetting session
+                    set_current_project(chat_id, project_path)
+                    
+                    escaped_message = escape_markdown_v2(f"📁 Switched to project: {project_name}\n🔄 기존 세션 유지됨")
+                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                else:
+                    escaped_message = escape_markdown_v2(f"❌ Invalid project number. Use /project to list projects.")
+                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                return
+            
             # Check if it's a git URL
             is_git_url = project_input.startswith(('git@', 'http://', 'https://', 'git://'))
             
@@ -534,20 +585,33 @@ def handle_project_command(message):
                 
                 project_path = clone_path
                 logger.info(f"Cloned {project_input} to {clone_path}")
+                
+                # Set project and RESET session for new project
+                set_current_project(chat_id, project_path)
+                set_current_session_id(chat_id, "")
+                
+                escaped_message = escape_markdown_v2(f"📁 Project cloned: {repo_name}\n✨ New session will be created")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
             else:
-                # Local path
-                if not os.path.exists(project_input):
-                    escaped_message = escape_markdown_v2(f"❌ Path does not exist: {project_input}")
+                # Check if it matches a project name
+                projects = list_projects()
+                if project_input in projects:
+                    project_path = get_project_path(project_input)
+                    
+                    # Set project WITHOUT resetting session
+                    set_current_project(chat_id, project_path)
+                    
+                    escaped_message = escape_markdown_v2(f"📁 Switched to project: {project_input}\n🔄 기존 세션 유지됨")
                     bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-                    return
-                project_path = project_input
-            
-            # Set project and RESET session (create new session for this project)
-            set_current_project(chat_id, project_path)
-            set_current_session_id(chat_id, "")  # Clear session for new project
-            
-            escaped_message = escape_markdown_v2(f"📁 Project set to: {project_path}\n✨ New session will be created for next command")
-            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                else:
+                    # Try as local path
+                    if not os.path.exists(project_input):
+                        escaped_message = escape_markdown_v2(f"❌ Path/project not found: {project_input}")
+                        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                    else:
+                        set_current_project(chat_id, project_input)
+                        escaped_message = escape_markdown_v2(f"📁 Project set to: {project_input}")
+                        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
                 
     except subprocess.TimeoutExpired:
         logger.error("Git clone timed out")
@@ -572,7 +636,9 @@ def handle_help_command(message):
             "/stats - Show usage statistics\n"
             "/history - Show recent sessions\n"
             "/cancel - Cancel running command\n"
-            "/project [path] - Set or show current project path\n"
+            "/project - List available projects\n"
+            "/project <number> - Switch to project by number (keeps session)\n"
+            "/project <git-url> - Clone new project (creates new session)\n"
             "/model [name] - List/set current model\n"
             "/session - List available sessions\n"
             "/set_session \u003cid\u003e - Set current session\n"
