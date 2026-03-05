@@ -444,6 +444,10 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         summary = summarize_output(collect_data.get("lines", []))
         full_text = summary.get("final_text", "")
         
+        # Debug log
+        logger.info(f"Summary: {summary}")
+        logger.info(f"Full text length: {len(full_text)}")
+        
         # Send summary to Telegram
         summary_text, keyboard, detail = format_summary_message(summary, full_text)
         
@@ -452,16 +456,26 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         escaped_summary = escape_only_dots(summary_text)
         
+        logger.info(f"Sending summary to Telegram: {len(escaped_summary)} chars")
+        
         try:
             if keyboard:
-                bot.send_message(chat_id, f"\n📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2", reply_markup=keyboard)
+                bot.send_message(chat_id, f"📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2", reply_markup=keyboard)
             else:
-                bot.send_message(chat_id, f"\n📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2")
+                bot.send_message(chat_id, f"📊 요약:\n{escaped_summary}", parse_mode="MarkdownV2")
+            logger.info("Summary sent successfully")
         except Exception as e:
             logger.error(f"Error sending summary: {e}")
+            # Try without markdown
+            try:
+                bot.send_message(chat_id, f"📊 요약:\n{summary_text}")
+                logger.info("Summary sent without markdown")
+            except Exception as e2:
+                logger.error(f"Error sending plain summary: {e2}")
         
         # Send completion indicator
-        bot.send_message(chat_id, "━━━━━━─━━━━━━━━━━\n✅ 작업 완료", parse_mode="MarkdownV2")
+        completion_msg = escape_markdown_v2("━─━─━─━─━─━─━─━─\n✅ 작업 완료")
+        bot.send_message(chat_id, completion_msg, parse_mode="MarkdownV2")
         
         if return_code == 0:
             logger.info("Command completed successfully")
