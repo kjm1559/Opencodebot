@@ -37,6 +37,7 @@ try:
     from telebot import types
     bot.set_my_commands([
         types.BotCommand("project", "Set/List current project path"),
+        types.BotCommand("model", "List/Set current model"),
         types.BotCommand("session", "List available sessions"),
         types.BotCommand("set_session", "Set current session"),
         types.BotCommand("current_session", "Show current session"),
@@ -52,6 +53,7 @@ except Exception as e:
 # In-memory storage (per chat)
 session_store: Dict[str, Dict[str, Any]] = {}
 project_store: Dict[str, str] = {}
+model_store: Dict[str, str] = {}
 
 # Configuration constants
 COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
@@ -226,6 +228,23 @@ def get_current_project(chat_id: str) -> str:
     """Get the current project path for a chat."""
     return project_store.get(chat_id, "")
 
+def set_current_model(chat_id: str, model_name: str) -> None:
+    """Set the current model for a chat."""
+    model_store[chat_id] = model_name
+
+def get_current_model(chat_id: str) -> str:
+    """Get the current model for a chat."""
+    return model_store.get(chat_id, "")
+
+def get_available_models() -> List[str]:
+    """Get list of available models from opencode."""
+    try:
+        result = run_opencode_command(["models"], timeout=10)
+        models = result.stdout.strip().split("\n")
+        return [m.strip() for m in models if m.strip()]
+    except Exception:
+        return []
+
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to Telegram."""
     try:
@@ -333,6 +352,7 @@ def handle_help_command(message):
             "OpenCode Telegram Controller Help:\n\n"
             "Commands:\n"
             "/project [path] - Set or show current project path\n"
+            "/model [name] - List/set current model\n"
             "/session - List available sessions\n"
             "/set_session <id> - Set current session\n"
             "/current_session - Show current session\n"
@@ -509,6 +529,59 @@ def handle_reset_command(message):
         escaped_error = escape_markdown_v2(f"Error resetting session: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
+@bot.message_handler(commands=['model'])
+def handle_model_command(message):
+    """Handle /model command."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /model command from chat {chat_id}")
+    
+    try:
+        bot.send_chat_action(chat_id, 'typing')
+        
+        model_arg = message.text[len('/model'):].strip()
+        
+        if not model_arg:
+            # Show current model and available models
+            current_model = get_current_model(chat_id)
+            
+            # Get available models
+            available_models = get_available_models()
+            
+            response = "Available Models:\n"
+            if available_models:
+                for model in available_models[:20]:  # Limit to first 20 for readability
+                    response += f"- {model}\n"
+                if len(available_models) > 20:
+                    response += f"... and {len(available_models) - 20} more\n"
+            else:
+                response += "Unable to fetch models.\n"
+            
+            if current_model:
+                response += f"\n🔵 Current model: {current_model}"
+            else:
+                response += "\nNo model set (using opencode default)"
+            
+            escaped_message = escape_markdown_v2(response)
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        else:
+            # Set model
+            model_name = model_arg
+            
+            # Validate model by checking if it's in available models
+            available_models = get_available_models()
+            if model_name in available_models:
+                set_current_model(chat_id, model_name)
+                escaped_message = escape_markdown_v2(f"Model set to: {model_name}")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+            else:
+                escaped_message = escape_markdown_v2(f"Model '{model_name}' not found. Use /model to list available models.")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                
+    except Exception as e:
+        logger.error(f"Error handling /model command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
     """Handle regular messages."""
@@ -518,10 +591,15 @@ def handle_message(message):
     # Get current project path
     current_project = get_current_project(chat_id)
     
+    # Get current model
+    current_model = get_current_model(chat_id)
+    
     # Build base command with project path if set
     base_args: List[str] = []
     if current_project:
         base_args.append(current_project)
+    if current_model:
+        base_args.append(f"--model={current_model}")
     base_args.append("run")
     
     # Check if we have an active session
@@ -559,9 +637,6 @@ def handle_message(message):
                 escaped_message = escape_markdown_v2("Executing command... Please wait.")
                 bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
                 
-                # The execution will proceed and opencode will automatically create a session
-                # For the purposes of streaming, we just run the command now
-                # We'll let the opencode command handle the actual session creation
                 stream_opencode_output(chat_id, command_args)
                 
         except Exception as e:
