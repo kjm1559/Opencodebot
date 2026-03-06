@@ -13,7 +13,11 @@ from typing import List, Dict, Any, Optional
 import logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
 
 # Environment variables
@@ -408,7 +412,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 if not line:
                     continue
                 
-                print(line, flush=True)
+                logger.debug("%s", line)
                 process_line_for_summary(collect_data, line, chat_id)
                 
                 # Parse and send minimal status updates
@@ -486,7 +490,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         # Stream stderr
         if process.stderr:
             for line in process.stderr:
-                print(f"STDERR: {line.strip()}", flush=True)
+                logger.error("STDERR: %s", line.strip())
         
         return_code = process.poll()
         if return_code != 0:
