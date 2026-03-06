@@ -4,12 +4,15 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 
 ## Features
 
-- **Real-time Status Updates**: Tool execution status with file path details
+- **Real-time Streaming**: All tool executions shown immediately (no deduplication)
+- **Input Details Display**: Shows full command parameters in separate messages
+- **Smart Truncation**: 100 char preview with "...", long inputs in separate messages
 - **Typing Indicators**: Shows typing status during command execution
 - **Summary Mode**: Clean emoji-based summary with detailed breakdown
 - **Logs to Terminal**: Full DEBUG-level command output to terminal
 - **Project Management**: List, switch, and clone projects with session awareness
 - **Session Management**: Create, list, set, and reset sessions
+- **Session Auto-Detection**: `/current_session` and `/compact` auto-find latest session
 - **Model Management**: List and set AI models from opencode
 - **Status Monitoring**: View current model, project, and session status
 - **Usage Statistics**: Track opencode usage with detailed statistics
@@ -46,9 +49,10 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 ### Session Management
 - `/session` - List available sessions
 - `/set_session <id>` - Set current session
-- `/current_session` - Show current session (auto-extracted from opencode)
+- `/current_session` - Show current session (auto-detects latest if not set)
 - `/new_session` - Create new session  
-- `/compact <session_id>` - Compact session
+- `/compact` - Compact current session (auto-detects latest if not set)
+- `/compact <session_id>` - Compact specific session
 - `/reset` - Clear current session
 
 ### General
@@ -58,13 +62,19 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 ## Output Behavior
 
 ### Real-time Messages (Streamed)
-- 📖 Reading: `src/file.py` (file path shown, truncated to 150 chars)
+- 📖 Reading: `src/file.py` (every occurrence, no deduplication)
 - ✏️ Modifying: `README.md`
 - 💻 Running: `git status`
 - 🌐 Fetching: `https://example.com`
 - 🔍 Searching: `**/*.py`
+- 📋 Input: `command details` (if input > 500 chars, separate preview message)
 - 📝 Session: `abc123...` (auto-extracted session ID)
 - ⚠️ Error: `error message preview`
+
+**Truncation Rules:**
+- ≤100 chars: Show full input
+- >100 chars: Truncate with "..."
+- >500 chars: Separate message with 200 char preview
 
 ### Completion Messages
 - 📊 Summary: Activity stats with file counts
@@ -72,7 +82,7 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 - ✅ Completed: Final completion indicator
 
 **Terminal**: Full DEBUG output with timestamps  
-**Telegram**: Minimal action messages + summary at end
+**Telegram**: All action messages streamed immediately + summary at end
 
 ## Requirements
 
@@ -112,13 +122,29 @@ Projects are stored in `~/projects/` directory:
 The bot uses JSON formatting for all OpenCode commands (`--format json`):
 
 - **Action Messages**: Extracted from `tool_use` events with file/path details
-- **Session Extraction**: Automatic from `session_started` events
+- **Real-time Streaming**: Every tool execution is shown immediately (no deduplication)
+- **Session Auto-Detection**: `/current_session` and `/compact` find latest session automatically
+- **Session Extraction**: Automatic from `sessionID` events in opencode output
 - **Error Handling**: Real-time error notifications from `error` events
-- **Deduplication**: Same action messages not repeated
-- **Truncation**: Long values truncated to 150 chars + "..."
+- **Truncation**: Long values truncated to 100 chars + "...", inputs >500 chars sent separately
 - **Logging**: DEBUG level to terminal with timestamps
 
 **Message Flow**:
+```
+[Command start]
+  ↓
+🔄 Typing indicator
+  ↓
+📖 Reading: src/file.py
+📖 Reading: src/another.py    (every action shown)
+✏️ Modifying: README.md       (no deduplication)
+  ↓
+⚠️ Error: optional error
+  ↓
+📊 Summary (activity stats)
+📋 Full Details (if available)
+  ↓
+✅ Completed (typing stops)
 ```
 [Command start]
   ↓
