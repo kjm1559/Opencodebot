@@ -141,24 +141,23 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
     """Format summary into a readable message with inline keyboard."""
     from telebot import types
     
-    # Create message text
     message_lines = []
     
-    # Add response text if available (this is the main content!)
+    # Add AI response (brief preview)
     if summary["final_text"]:
         text = summary["final_text"].strip()
-        if len(text) > 2500:
-            text = text[:2500] + "..."
+        preview_length = 1000
+        preview = text[:preview_length]
         
-        # Escape special chars for summary
-        escaped_text = text.replace("\n", "\n")
+        message_lines.append("💬 AI Response:\n")
+        message_lines.append(f"{preview}")
         
-        message_lines.append("💬 Response:\n")
-        message_lines.append(f"{escaped_text}\n")
+        if len(text) > preview_length:
+            message_lines.append("\n\n... (truncated)")
+            message_lines.append("\n🔽 Click below to view full response")
     
-    # Build emoji-based summary
+    # Activities summary
     emoji_parts = []
-    
     if summary["files_created"] > 0:
         emoji_parts.append(f"📄 {summary['files_created']} files created")
     if summary["files_modified"] > 0:
@@ -167,24 +166,18 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
         emoji_parts.append(f"📖 {summary['files_read']} files read")
     if summary["bash_commands"] > 0:
         emoji_parts.append(f"💻 {summary['bash_commands']} commands executed")
-    
     if summary["errors"] > 0:
         emoji_parts.append(f"❌ {summary['errors']} errors")
     
     if emoji_parts:
-        message_lines.append("\n✨ Activities:\n")
+        message_lines.append("\n\n✨ Activities")
         for item in emoji_parts:
-            message_lines.append(f"  • {item}\n")
+            message_lines.append(f"  • {item}")
     
-    # Create inline keyboard for detail view
-    buttons = []
-    if detail_text and len(detail_text.strip()) > 0 and len(detail_text) > 2500:
-        button = types.InlineKeyboardButton("📋 View Full Output", callback_data=f"details_{hash(detail_text[:50])}")
-        buttons.append([button])
+    # Full detail text for separate message
+    full_detail = detail_text.strip() if detail_text else ""
     
-    keyboard = types.InlineKeyboardMarkup().add(*buttons) if buttons else None
-    
-    return "".join(message_lines), keyboard, detail_text
+    return "".join(message_lines), None, full_detail
 
 def process_output_line(line: str, chat_id: str) -> str:
     """Process a single line of opencode output and format it for Telegram."""
@@ -445,7 +438,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         logger.info(f"Summary: {summary}")
         
-        summary_text, keyboard, _ = format_summary_message(summary, full_text)
+        summary_text, keyboard, full_detail = format_summary_message(summary, full_text)
         if not summary_text.strip():
             summary_text = "✅ Completed"
         
@@ -455,15 +448,21 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         try:
             bot.send_message(
                 chat_id,
-                f"📊 요약:\n{escaped_summary}",
-                parse_mode="MarkdownV2",
-                reply_markup=keyboard
+                f"📊 Summary:\n\n{escaped_summary}",
+                parse_mode="MarkdownV2"
             )
+            
+            # Send full detail as separate message if available
+            if full_detail and len(full_detail.strip()) > 1000:
+                detail_preview = full_detail[:500] + "..."
+                detail_msg = f"📋 Full Details:\n\n{detail_preview}"
+                bot.send_message(chat_id, detail_msg, parse_mode="MarkdownV2")
+            
             logger.info("Summary sent successfully")
         except Exception as e:
             logger.error(f"Error sending summary: {e}")
             try:
-                bot.send_message(chat_id, f"📊 요약:\n{summary_text}")
+                bot.send_message(chat_id, f"📊 Summary:\n{summary_text}")
             except Exception as e2:
                 logger.error(f"Error sending plain summary: {e2}")
         
