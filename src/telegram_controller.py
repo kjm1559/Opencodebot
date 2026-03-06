@@ -443,7 +443,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         logger.info(f"Summary: {summary}")
         
-        summary_text, full_detail = format_summary_message(summary, full_text)
+        summary_text, detail_text = format_summary_message(summary, full_text)
         if not summary_text.strip():
             summary_text = "✅ Completed"
         
@@ -456,10 +456,22 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 parse_mode="MarkdownV2"
             )
             
-            # Send full detail if available
-            if full_detail and len(full_detail) > 1000:
-                detail_msg = f"📋 Full Details:\n\n{full_detail}"
-                bot.send_message(chat_id, detail_msg, parse_mode="MarkdownV2")
+            # Send full detail in chunks if available
+            if detail_text and len(detail_text) > 1000:
+                logger.info(f"Sending full details ({len(detail_text)} chars)")
+                
+                # Telegram message limit is 4096 characters
+                chunk_size = 3500
+                chunks = [detail_text[i:i+chunk_size] for i in range(0, len(detail_text), chunk_size)]
+                
+                for idx, chunk in enumerate(chunks, 1):
+                    if idx == 1:
+                        chunk_msg = f"📋 Full Details:\n\n{chunk}"
+                    else:
+                        chunk_msg = f"📋 Full Details (cont.) #{idx}:\n\n{chunk}"
+                    
+                    bot.send_message(chat_id, chunk_msg, parse_mode="MarkdownV2")
+                    logger.info(f"Sent detail chunk {idx}/{len(chunks)}")
             
             logger.info("Summary sent successfully")
         except Exception as e:
