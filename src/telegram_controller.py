@@ -83,16 +83,23 @@ def collect_output_for_summary():
     """Initialize output collection."""
     return {"lines": [], "summary": None, "full_text": ""}
 
-def process_line_for_summary(collect_data: dict, line: str) -> None:
-    """Process a line and add to collection."""
-    if collect_data["lines"] is None:
-        collect_data["lines"] = []
-    
+def process_line_for_summary(collect_data: dict, line: str, chat_id: Optional[str] = None) -> None:
+    """Process a line and add to collection, extract session ID if found."""
     try:
         if not line:
             return
         obj = json.loads(line)
+        
+        if "lines" not in collect_data:
+            collect_data["lines"] = []
         collect_data["lines"].append(obj)
+        
+        # Extract session ID if present
+        if chat_id and obj.get("type") == "session_started":
+            session_id = obj.get("session_id")
+            if session_id:
+                set_current_session_id(chat_id, session_id)
+                logger.info(f"Extracted session_id from output: {session_id}")
     except json.JSONDecodeError:
         pass
 
@@ -399,9 +406,9 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 line = line.strip()
                 if not line:
                     continue
-                    
+                
                 print(line, flush=True)
-                process_line_for_summary(collect_data, line)
+                process_line_for_summary(collect_data, line, chat_id)
                 
                 # Send tool status to Telegram
                 try:
