@@ -387,14 +387,20 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
     base_tool = tool.split("_")[0] if "_" in tool else tool
     for key, (action, param_key) in action_map.items():
         if key in base_tool:
-            # Try to extract parameter from part
-            params = part.get("state", {}).get("inputs", {})
-            if params:
+            # Try to get input directly from inputs
+            if "inputs" in part:
+                value = part["inputs"].get(param_key, "")
+            elif "state" in part:
+                params = part["state"].get("inputs", {})
                 value = params.get(param_key, "")
-                if value:
-                    # Truncate long values
-                    value = value[:100] + "..." if len(value) > 100 else value
-                    return f"{action}: {value}"
+            else:
+                value = ""
+            
+            if value and isinstance(value, str):
+                # Truncate long values
+                if len(value) > 150:
+                    value = value[:150] + "..."
+                return f"{action}: {value}"
             return action
     return None
 
@@ -438,9 +444,14 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                         state = part.get("state", {})
                         status = state.get("status", "")
                         
+                        # Debug log to understand structure
+                        logger.debug(f"Tool: {tool}, Status: {status}")
+                        logger.debug(f"Part: {part}")
+                        
                         action_msg = get_action_message(tool, status, part)
                         if action_msg and action_msg not in sent_messages and "finished" not in status:
                             sent_messages.add(action_msg)
+                            logger.info(f"Sending action: {action_msg}")
                             try:
                                 bot.send_message(chat_id, escape_markdown_v2(action_msg), parse_mode="MarkdownV2")
                             except Exception as e:
