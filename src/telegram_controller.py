@@ -410,21 +410,71 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 print(line, flush=True)
                 process_line_for_summary(collect_data, line, chat_id)
                 
-                # Send tool status to Telegram
+                # Send status updates to Telegram
                 try:
                     obj = json.loads(line)
-                    if obj.get("type") == "tool_use":
+                    msg_type = obj.get("type", "")
+                    
+                    # Send tool status updates
+                    if msg_type == "tool_use":
                         part = obj.get("part", {})
                         tool_name = part.get("tool", "")
-                        status = part.get("state", {}).get("status", "")
+                        state = part.get("state", {})
+                        status = state.get("status", "")
                         
                         status_msg = get_tool_status_message(tool_name, status)
                         if status_msg and status_msg != last_tool_status and "finished" not in status:
                             last_tool_status = status_msg
                             try:
                                 bot.send_message(chat_id, escape_markdown_v2(status_msg), parse_mode="MarkdownV2")
+                                logger.debug(f"Sent tool status: {status_msg}")
                             except Exception as e:
-                                logger.warning(f"Failed to send status: {e}")
+                                logger.warning(f"Failed to send tool status: {e}")
+                    
+                    # Send text updates for AI responses
+                    elif msg_type == "text":
+                        text = obj.get("text", "") or obj.get("part", {}).get("text", "")
+                        if text and len(text.strip()) > 20:
+                            # Send only first 200 chars of text updates
+                            preview = text.strip()[:200] + "..." if len(text.strip()) > 200 else text.strip()
+                            try:
+                                bot.send_message(
+                                    chat_id,
+                                    escape_markdown_v2(f"💬 {preview}"),
+                                    parse_mode="MarkdownV2"
+                                )
+                                logger.debug(f"Sent text preview: {preview[:50]}...")
+                            except Exception as e:
+                                logger.warning(f"Failed to send text preview: {e}")
+                    
+                    # Send session started with session ID
+                    elif msg_type == "session_started":
+                        session_id = obj.get("session_id", "")
+                        if session_id:
+                            try:
+                                bot.send_message(
+                                    chat_id,
+                                    escape_markdown_v2(f"📝 Session: {session_id}"),
+                                    parse_mode="MarkdownV2"
+                                )
+                                logger.debug(f"Sent session ID: {session_id}")
+                            except Exception as e:
+                                logger.warning(f"Failed to send session info: {e}")
+                    
+                    # Send error notifications
+                    elif msg_type == "error":
+                        error_msg = obj.get("text", "") or obj.get("message", "")
+                        if error_msg:
+                            try:
+                                bot.send_message(
+                                    chat_id,
+                                    escape_markdown_v2(f"⚠️ Error: {error_msg[:200]}..." if len(error_msg) > 200 else f"⚠️ Error: {error_msg}"),
+                                    parse_mode="MarkdownV2"
+                                )
+                                logger.debug(f"Sent error: {error_msg[:50]}...")
+                            except Exception as e:
+                                logger.warning(f"Failed to send error: {e}")
+                    
                 except json.JSONDecodeError:
                     pass
         
