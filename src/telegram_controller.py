@@ -407,7 +407,10 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to terminal, send only summary to Telegram."""
     try:
-        sent_messages = set()  # Track sent messages to avoid duplicates
+        # Send typing indicator
+        bot.send_chat_action(chat_id, 'typing')
+        
+        sent_messages = set()
         last_action = None
         
         logger.info(f"Executing opencode command with args: {command_args}")
@@ -562,6 +565,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             except Exception as e2:
                 logger.error(f"Error sending plain summary: {e2}")
         
+        # Send completion message (this will stop typing indicator)
         bot.send_message(
             chat_id,
             escape_markdown_v2("━─━─━─━─━─━─━─━─\n✅ Completed"),
