@@ -369,22 +369,33 @@ def get_available_models() -> List[str]:
     except Exception:
         return []
 
-def get_action_message(tool: str, status: str) -> Optional[str]:
+def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> Optional[str]:
     """Get a action message for the tool and status."""
+    if part is None:
+        part = {}
+    
     action_map = {
-        "read": "📖 Reading file",
-        "edit": "✏️ Modifying file",
-        "write": "📄 Writing file",
-        "bash": "💻 Running command",
-        "webfetch": "🌐 Fetching web",
-        "glob": "🔍 Searching files",
-        "grep": "🔍 Searching text"
+        "read": ("📖 Reading", "path"),
+        "edit": ("✏️ Modifying", "path"),
+        "write": ("📄 Writing", "path"),
+        "bash": ("💻 Running", "command"),
+        "webfetch": ("🌐 Fetching", "url"),
+        "glob": ("🔍 Searching", "pattern"),
+        "grep": ("🔍 Grep", "pattern")
     }
     
     base_tool = tool.split("_")[0] if "_" in tool else tool
-    for key, msg in action_map.items():
+    for key, (action, param_key) in action_map.items():
         if key in base_tool:
-            return msg
+            # Try to extract parameter from part
+            params = part.get("state", {}).get("inputs", {})
+            if params:
+                value = params.get(param_key, "")
+                if value:
+                    # Truncate long values
+                    value = value[:100] + "..." if len(value) > 100 else value
+                    return f"{action}: {value}"
+            return action
     return None
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
@@ -420,14 +431,14 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                     obj = json.loads(line)
                     msg_type = obj.get("type", "")
                     
-                    # Tool finished - send action summary
+                    # Tool finished - send action summary with file/path info
                     if msg_type == "tool_use":
                         part = obj.get("part", {})
                         tool = part.get("tool", "")
                         state = part.get("state", {})
                         status = state.get("status", "")
                         
-                        action_msg = get_action_message(tool, status)
+                        action_msg = get_action_message(tool, status, part)
                         if action_msg and action_msg not in sent_messages and "finished" not in status:
                             sent_messages.add(action_msg)
                             try:
