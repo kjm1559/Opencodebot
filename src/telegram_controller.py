@@ -98,12 +98,26 @@ def process_line_for_summary(collect_data: dict, line: str, chat_id: Optional[st
             collect_data["lines"] = []
         collect_data["lines"].append(obj)
         
-        # Extract session ID if present
-        if chat_id and obj.get("type") == "session_started":
+        msg_type = obj.get("type", "")
+        
+        # Extract session ID from various locations
+        if chat_id:
+            # Try root level session_id
             session_id = obj.get("session_id")
+            if not session_id:
+                # Try part.session_id
+                part = obj.get("part", {})
+                session_id = part.get("session_id")
+            if not session_id:
+                # Try state.session_id for tool_use events
+                if msg_type == "tool_use":
+                    part = obj.get("part", {})
+                    state = part.get("state", {})
+                    session_id = state.get("session_id")
+            
             if session_id:
                 set_current_session_id(chat_id, session_id)
-                logger.info(f"Extracted session_id from output: {session_id}")
+                logger.info(f"Extracted session_id: {session_id}")
     except json.JSONDecodeError:
         pass
 
@@ -476,6 +490,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                     elif msg_type == "session_started":
                         session_id = obj.get("session_id", "")
                         if session_id:
+                            logger.info(f"Detected session_started event: {session_id}")
                             msg = f"📝 Session: {session_id[:12]}..."
                             if msg not in sent_messages:
                                 sent_messages.add(msg)
