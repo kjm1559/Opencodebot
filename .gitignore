@@ -64,4 +64,9 @@ coverage.xml
 .Spotlight-V100
 .Trashes
 ehthumbs.db
-Thumbs.dbsrc/__pycache__/
+Thumbs.db
+src/__pycache__/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+

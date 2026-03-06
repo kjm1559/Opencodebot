@@ -153,33 +153,33 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
         # Escape special chars for summary
         escaped_text = text.replace("\n", "\n")
         
-        message_lines.append("💬 응답:\n")
+        message_lines.append("💬 Response:\n")
         message_lines.append(f"{escaped_text}\n")
     
     # Build emoji-based summary
     emoji_parts = []
     
     if summary["files_created"] > 0:
-        emoji_parts.append(f"📄 파일 {summary['files_created']}개 작성")
+        emoji_parts.append(f"📄 {summary['files_created']} files created")
     if summary["files_modified"] > 0:
-        emoji_parts.append(f"✏️ 파일 {summary['files_modified']}개 수정")
+        emoji_parts.append(f"✏️ {summary['files_modified']} files modified")
     if summary["files_read"] > 0:
-        emoji_parts.append(f"📖 파일 {summary['files_read']}개 확인")
+        emoji_parts.append(f"📖 {summary['files_read']} files read")
     if summary["bash_commands"] > 0:
-        emoji_parts.append(f"💻 명령어 {summary['bash_commands']}개 실행")
+        emoji_parts.append(f"💻 {summary['bash_commands']} commands executed")
     
     if summary["errors"] > 0:
-        emoji_parts.append(f"❌ 오류 {summary['errors']}개 발생")
+        emoji_parts.append(f"❌ {summary['errors']} errors")
     
     if emoji_parts:
-        message_lines.append("\n✨ 작업 내역:\n")
+        message_lines.append("\n✨ Activities:\n")
         for item in emoji_parts:
             message_lines.append(f"  • {item}\n")
     
     # Create inline keyboard for detail view
     buttons = []
     if detail_text and len(detail_text.strip()) > 0 and len(detail_text) > 2500:
-        button = types.InlineKeyboardButton("📋 전체 내용 보기", callback_data=f"details_{hash(detail_text[:50])}")
+        button = types.InlineKeyboardButton("📋 View Full Output", callback_data=f"details_{hash(detail_text[:50])}")
         buttons.append([button])
     
     keyboard = types.InlineKeyboardMarkup().add(*buttons) if buttons else None
@@ -370,13 +370,13 @@ def get_available_models() -> List[str]:
 def get_tool_status_message(tool_name: str, status: str) -> Optional[str]:
     """Get a short status message for tool execution."""
     TOOL_STATUS_MAP = {
-        "read_file": ("reading", "📖 파일 읽는 중..."),
-        "edit_file": ("editing", "✏️ 파일 수정 중..."),
-        "write_file": ("writing", "📄 파일 작성 중..."),
-        "bash": ("running", "💻 명령어 실행 중..."),
-        "webfetch": ("fetching", "🌐 웹 검색 중..."),
-        "glob": ("searching", "🔍 파일 검색 중..."),
-        "grep": ("searching", "🔍 텍스트 검색 중...")
+        "read_file": ("reading", "📖 Reading file..."),
+        "edit_file": ("editing", "✏️ Modifying file..."),
+        "write_file": ("writing", "📄 Writing file..."),
+        "bash": ("running", "💻 Running command..."),
+        "webfetch": ("fetching", "🌐 Fetching web..."),
+        "glob": ("searching", "🔍 Searching files..."),
+        "grep": ("searching", "🔍 Searching text...")
     }
     
     tool_info = TOOL_STATUS_MAP.get(tool_name)
@@ -387,7 +387,7 @@ def get_tool_status_message(tool_name: str, status: str) -> Optional[str]:
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to terminal, send only summary to Telegram."""
     try:
-        bot.send_message(chat_id, escape_markdown_v2("🔄 작업 시작..."), parse_mode="MarkdownV2")
+        bot.send_message(chat_id, escape_markdown_v2("🔄 Started..."), parse_mode="MarkdownV2")
         
         logger.info(f"Executing opencode command with args: {command_args}")
         
@@ -447,7 +447,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         summary_text, keyboard, _ = format_summary_message(summary, full_text)
         if not summary_text.strip():
-            summary_text = "✅ 작업 완료"
+            summary_text = "✅ Completed"
         
         escaped_summary = escape_only_dots(summary_text)
         logger.info(f"Sending summary: {len(escaped_summary)} chars")
@@ -469,7 +469,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         bot.send_message(
             chat_id,
-            escape_markdown_v2("━─━─━─━─━─━─━─━─\n✅ 작업 완료"),
+            escape_markdown_v2("━─━─━─━─━─━─━─━─\n✅ Completed"),
             parse_mode="MarkdownV2"
         )
         
@@ -480,7 +480,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         logger.error(f"Error streaming opencode output: {e}")
         bot.send_message(
             chat_id,
-            escape_markdown_v2(f"❌ 오류: {str(e)}"),
+            escape_markdown_v2(f"❌ Error: {str(e)}"),
             parse_mode="MarkdownV2"
         )
 
