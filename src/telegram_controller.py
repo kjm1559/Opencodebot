@@ -102,18 +102,15 @@ def process_line_for_summary(collect_data: dict, line: str, chat_id: Optional[st
         
         # Extract session ID from various locations
         if chat_id:
-            # Try root level session_id
-            session_id = obj.get("session_id")
+            # Try root level sessionID (camelCase)
+            session_id = obj.get("sessionID")
             if not session_id:
-                # Try part.session_id
+                # Try root level session_id (snake_case)
+                session_id = obj.get("session_id")
+            if not session_id and "part" in obj:
+                # Try part.sessionID
                 part = obj.get("part", {})
-                session_id = part.get("session_id")
-            if not session_id:
-                # Try state.session_id for tool_use events
-                if msg_type == "tool_use":
-                    part = obj.get("part", {})
-                    state = part.get("state", {})
-                    session_id = state.get("session_id")
+                session_id = part.get("sessionID") or part.get("session_id")
             
             if session_id:
                 set_current_session_id(chat_id, session_id)
@@ -383,8 +380,10 @@ def get_available_models() -> List[str]:
     except Exception:
         return []
 
-def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> Optional[str]:
-    """Get a action message for the tool and status."""
+def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> Optional[tuple]:
+    """Get action message and full input detail for the tool and status.
+    Returns: (message_to_send, full_detail_for_button) or None
+    """
     if part is None:
         part = {}
     
@@ -401,21 +400,27 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
     base_tool = tool.split("_")[0] if "_" in tool else tool
     for key, (action, param_key) in action_map.items():
         if key in base_tool:
-            # Try to get input directly from inputs
+            # Try to get input directly from inputs or state input
+            input_data = {}
             if "inputs" in part:
-                value = part["inputs"].get(param_key, "")
-            elif "state" in part:
-                params = part["state"].get("inputs", {})
-                value = params.get(param_key, "")
-            else:
-                value = ""
+                input_data = part["inputs"]
+            elif "state" in part and "input" in part["state"]:
+                input_data = part["state"]["input"]
             
+            value = input_data.get(param_key, "")
+            
+            # Prepare short message (truncated)
             if value and isinstance(value, str):
-                # Truncate long values
-                if len(value) > 150:
-                    value = value[:150] + "..."
-                return f"{action}: {value}"
-            return action
+                short_msg = value[:100] + "..." if len(value) > 100 else value
+                return f"{action}: {short_msg}", value
+            elif input_data:
+                # No specific param name, but have input - show as JSON
+                import json
+                json_str = json.dumps(input_data, indent=2)
+                short_msg = json_str[:100] + "..." if len(json_str) > 100 else json_str
+                return f"{action}:\n```{short_msg}```", json_str
+            
+            return f"{action}", None
     return None
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
@@ -465,12 +470,22 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                         logger.debug(f"Tool: {tool}, Status: {status}")
                         logger.debug(f"Part: {part}")
                         
-                        action_msg = get_action_message(tool, status, part)
-                        if action_msg and action_msg not in sent_messages and "finished" not in status:
-                            sent_messages.add(action_msg)
-                            logger.info(f"Sending action: {action_msg}")
+                        result = get_action_message(tool, status, part)
+                        if result and "finished" not in status:
+                            action_msg, full_detail = result
+                            
+                            # Send action message (every occurrence, not deduplicated)
+                            escaped_msg = escape_markdown_v2(action_msg)
+                            
                             try:
-                                bot.send_message(chat_id, escape_markdown_v2(action_msg), parse_mode="MarkdownV2")
+                                bot.send_message(chat_id, escaped_msg, parse_mode="MarkdownV2")
+                                logger.info(f"Sending action: {action_msg}")
+                                
+                                # Send full detail separately if very long
+                                if full_detail and len(full_detail) > 500:
+                                    detail_preview = full_detail[:200] + "..."
+                                    detail_msg = f"📋 Input:\n```{detail_preview}```"
+                                    bot.send_message(chat_id, escape_markdown_v2(detail_msg), parse_mode="MarkdownV2")
                             except Exception as e:
                                 logger.warning(f"Failed to send action: {e}")
                     
@@ -788,7 +803,19 @@ def handle_current_session_command(message):
     logger.info(f"Received /current_session command from chat {chat_id}")
     
     try:
+        # First check in-memory store
         session_id = get_current_session_id(chat_id)
+        
+        # If not found or empty, get latest from opencode
+        if not session_id:
+            result = run_opencode_command(["session", "list", "--format", "json"])
+            sessions_data = json.loads(result.stdout)
+            if sessions_data:
+                # Sort by updated timestamp (most recent first)
+                latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
+                session_id = latest_session['id']
+                logger.info(f"Auto-detected latest session: {session_id}")
+        
         if session_id:
             escaped_message = escape_markdown_v2(f"Current session: {session_id}")
             bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
@@ -853,14 +880,25 @@ def handle_compact_command(message):
     logger.info(f"Received /compact command from chat {chat_id}")
     
     try:
-        # Check if we have an active session
+        # First check in-memory store
         session_id = get_current_session_id(chat_id)
+        
+        # If not found or empty, get latest from opencode
         if not session_id:
-            escaped_message = escape_markdown_v2("No active session.")
-            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-            return
+            result = run_opencode_command(["session", "list", "--format", "json"])
+            sessions_data = json.loads(result.stdout)
+            if sessions_data:
+                # Sort by updated timestamp (most recent first)
+                latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
+                session_id = latest_session['id']
+                set_current_session_id(chat_id, session_id)  # Cache it
+                logger.info(f"Auto-detected latest session for compact: {session_id}")
+            else:
+                escaped_message = escape_markdown_v2("No sessions available to compact.")
+                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                return
             
-        # Compact the current session
+        # Compact the session
         command_args = ["session", "compact", session_id]
         result = run_opencode_command(command_args)
         
