@@ -365,27 +365,29 @@ def get_available_models() -> List[str]:
     except Exception:
         return []
 
-def get_tool_status_message(tool_name: str, status: str) -> Optional[str]:
-    """Get a short status message for tool execution."""
-    TOOL_STATUS_MAP = {
-        "read_file": ("reading", "📖 Reading file..."),
-        "edit_file": ("editing", "✏️ Modifying file..."),
-        "write_file": ("writing", "📄 Writing file..."),
-        "bash": ("running", "💻 Running command..."),
-        "webfetch": ("fetching", "🌐 Fetching web..."),
-        "glob": ("searching", "🔍 Searching files..."),
-        "grep": ("searching", "🔍 Searching text...")
+def get_action_message(tool: str, status: str) -> Optional[str]:
+    """Get a action message for the tool and status."""
+    action_map = {
+        "read": "📖 Reading file",
+        "edit": "✏️ Modifying file",
+        "write": "📄 Writing file",
+        "bash": "💻 Running command",
+        "webfetch": "🌐 Fetching web",
+        "glob": "🔍 Searching files",
+        "grep": "🔍 Searching text"
     }
     
-    tool_info = TOOL_STATUS_MAP.get(tool_name)
-    if tool_info and tool_info[0] in status:
-        return tool_info[1]
+    base_tool = tool.split("_")[0] if "_" in tool else tool
+    for key, msg in action_map.items():
+        if key in base_tool:
+            return msg
     return None
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to terminal, send only summary to Telegram."""
     try:
-        bot.send_message(chat_id, escape_markdown_v2("🔄 Started..."), parse_mode="MarkdownV2")
+        sent_messages = set()  # Track sent messages to avoid duplicates
+        last_action = None
         
         logger.info(f"Executing opencode command with args: {command_args}")
         
@@ -398,7 +400,6 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         )
         
         collect_data = collect_output_for_summary()
-        last_tool_status: Optional[str] = None
         
         # Stream stdout
         if process.stdout:
@@ -410,70 +411,74 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 print(line, flush=True)
                 process_line_for_summary(collect_data, line, chat_id)
                 
-                # Send status updates to Telegram
+                # Parse and send minimal status updates
                 try:
                     obj = json.loads(line)
                     msg_type = obj.get("type", "")
                     
-                    # Send tool status updates
+                    # Tool finished - send action summary
                     if msg_type == "tool_use":
                         part = obj.get("part", {})
-                        tool_name = part.get("tool", "")
+                        tool = part.get("tool", "")
                         state = part.get("state", {})
                         status = state.get("status", "")
                         
-                        status_msg = get_tool_status_message(tool_name, status)
-                        if status_msg and status_msg != last_tool_status and "finished" not in status:
-                            last_tool_status = status_msg
+                        action_msg = get_action_message(tool, status)
+                        if action_msg and action_msg not in sent_messages and "finished" not in status:
+                            sent_messages.add(action_msg)
                             try:
-                                bot.send_message(chat_id, escape_markdown_v2(status_msg), parse_mode="MarkdownV2")
-                                logger.debug(f"Sent tool status: {status_msg}")
+                                bot.send_message(chat_id, escape_markdown_v2(action_msg), parse_mode="MarkdownV2")
                             except Exception as e:
-                                logger.warning(f"Failed to send tool status: {e}")
+                                logger.warning(f"Failed to send action: {e}")
                     
-                    # Send text updates for AI responses
-                    elif msg_type == "text":
-                        text = obj.get("text", "") or obj.get("part", {}).get("text", "")
-                        if text and len(text.strip()) > 20:
-                            # Send only first 200 chars of text updates
-                            preview = text.strip()[:200] + "..." if len(text.strip()) > 200 else text.strip()
-                            try:
-                                bot.send_message(
-                                    chat_id,
-                                    escape_markdown_v2(f"💬 {preview}"),
-                                    parse_mode="MarkdownV2"
-                                )
-                                logger.debug(f"Sent text preview: {preview[:50]}...")
-                            except Exception as e:
-                                logger.warning(f"Failed to send text preview: {e}")
+                    # Step progress - show which step is running
+                    elif msg_type == "step_progress":
+                        step = obj.get("step", -1)
+                        if step > 0:
+                            msg = f"🔄 Step {step}/..."
+                            if msg != last_action:
+                                last_action = msg
+                                try:
+                                    bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
+                                except Exception:
+                                    pass
                     
-                    # Send session started with session ID
+                    # Session started
                     elif msg_type == "session_started":
                         session_id = obj.get("session_id", "")
                         if session_id:
-                            try:
-                                bot.send_message(
-                                    chat_id,
-                                    escape_markdown_v2(f"📝 Session: {session_id}"),
-                                    parse_mode="MarkdownV2"
-                                )
-                                logger.debug(f"Sent session ID: {session_id}")
-                            except Exception as e:
-                                logger.warning(f"Failed to send session info: {e}")
+                            msg = f"📝 Session: {session_id[:12]}..."
+                            if msg not in sent_messages:
+                                sent_messages.add(msg)
+                                try:
+                                    bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
+                                except Exception as e:
+                                    logger.warning(f"Failed to send session: {e}")
                     
-                    # Send error notifications
+                    # Step finished with summary - indicate completion
+                    elif msg_type == "step_finish":
+                        step = obj.get("step", -1)
+                        if step > 0:
+                            msg = f"✅ Step {step} completed"
+                            if msg not in sent_messages:
+                                sent_messages.add(msg)
+                                try:
+                                    bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
+                                except Exception:
+                                    pass
+                    
+                    # Error - notify immediately
                     elif msg_type == "error":
                         error_msg = obj.get("text", "") or obj.get("message", "")
                         if error_msg:
-                            try:
-                                bot.send_message(
-                                    chat_id,
-                                    escape_markdown_v2(f"⚠️ Error: {error_msg[:200]}..." if len(error_msg) > 200 else f"⚠️ Error: {error_msg}"),
-                                    parse_mode="MarkdownV2"
-                                )
-                                logger.debug(f"Sent error: {error_msg[:50]}...")
-                            except Exception as e:
-                                logger.warning(f"Failed to send error: {e}")
+                            error_preview = error_msg[:100] + "..." if len(error_msg) > 100 else error_msg
+                            msg = f"⚠️ Error: {error_preview}"
+                            if msg not in sent_messages:
+                                sent_messages.add(msg)
+                                try:
+                                    bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
+                                except Exception as e:
+                                    logger.warning(f"Failed to send error: {e}")
                     
                 except json.JSONDecodeError:
                     pass
