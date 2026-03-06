@@ -580,9 +580,9 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 
                 for idx, chunk in enumerate(chunks, 1):
                     if idx == 1:
-                        chunk_msg = f"📋 Full Details:\n\n{chunk}"
+                        chunk_msg = f"📋 Full Details:\n\n{escape_markdown_v2(chunk)}"
                     else:
-                        chunk_msg = f"📋 Full Details (cont.) #{idx}:\n\n{chunk}"
+                        chunk_msg = f"📋 Full Details (cont.) #{idx}:\n\n{escape_markdown_v2(chunk)}"
                     
                     bot.send_message(chat_id, chunk_msg, parse_mode="MarkdownV2")
                     logger.info(f"Sent detail chunk {idx}/{len(chunks)}")
@@ -591,7 +591,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         except Exception as e:
             logger.error(f"Error sending summary: {e}")
             try:
-                bot.send_message(chat_id, f"📊 Summary:\n{summary_text}")
+                bot.send_message(chat_id, f"📊 Summary:\n{escape_markdown_v2(summary_text)}", parse_mode="MarkdownV2")
             except Exception as e2:
                 logger.error(f"Error sending plain summary: {e2}")
         
