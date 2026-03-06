@@ -70,3 +70,7 @@ src/__pycache__/
 # Jupyter notebooks
 .ipynb_checkpoints/
 
+# Workspace (git cloned projects)
+workspace/
+~/projects/
+
