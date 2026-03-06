@@ -142,11 +142,12 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
     from telebot import types
     
     message_lines = []
+    detail_text = detail_text.strip() if detail_text else ""
     
     # Add AI response (brief preview)
     if summary["final_text"]:
         text = summary["final_text"].strip()
-        preview_length = 1000
+        preview_length = 800
         preview = text[:preview_length]
         
         message_lines.append("💬 AI Response:\n")
@@ -154,7 +155,7 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
         
         if len(text) > preview_length:
             message_lines.append("\n\n... (truncated)")
-            message_lines.append("\n🔽 Click below to view full response")
+            message_lines.append("\n👇 Click below for full response")
     
     # Activities summary
     emoji_parts = []
@@ -174,10 +175,7 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
         for item in emoji_parts:
             message_lines.append(f"  • {item}")
     
-    # Full detail text for separate message
-    full_detail = detail_text.strip() if detail_text else ""
-    
-    return "".join(message_lines), None, full_detail
+    return "".join(message_lines), detail_text
 
 def process_output_line(line: str, chat_id: str) -> str:
     """Process a single line of opencode output and format it for Telegram."""
@@ -438,12 +436,11 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         
         logger.info(f"Summary: {summary}")
         
-        summary_text, keyboard, full_detail = format_summary_message(summary, full_text)
+        summary_text, full_detail = format_summary_message(summary, full_text)
         if not summary_text.strip():
             summary_text = "✅ Completed"
         
         escaped_summary = escape_only_dots(summary_text)
-        logger.info(f"Sending summary: {len(escaped_summary)} chars")
         
         try:
             bot.send_message(
@@ -452,10 +449,9 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                 parse_mode="MarkdownV2"
             )
             
-            # Send full detail as separate message if available
-            if full_detail and len(full_detail.strip()) > 1000:
-                detail_preview = full_detail[:500] + "..."
-                detail_msg = f"📋 Full Details:\n\n{detail_preview}"
+            # Send full detail if available
+            if full_detail and len(full_detail) > 1000:
+                detail_msg = f"📋 Full Details:\n\n{full_detail}"
                 bot.send_message(chat_id, detail_msg, parse_mode="MarkdownV2")
             
             logger.info("Summary sent successfully")
