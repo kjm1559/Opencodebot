@@ -713,11 +713,12 @@ def handle_help_command(message):
             "/project <git-url> - Clone new project (creates new session)\n"
             "/model [name] - List/set current model\n"
             "/session - List available sessions\n"
-            "/set_session \u003cid\u003e - Set current session\n"
+            "/set_session <id> - Set current session\n"
             "/current_session - Show current session\n"
             "/new_session - Create new session\n"
-            "/compact \u003csession_id\u003e - Compact current session\n"
-            "/reset - Clear current session\n"
+            "/compact <session_id> - Compact current session\n"
+            "/reset - Clear current session (creates new on next command)\n"
+            "/restart - Restart bot (clears all sessions)\n"
             "/help - Show this help message\n\n"
             "Simply type any message to run opencode commands."
         )
@@ -1046,6 +1047,41 @@ def handle_cancel_command(message):
             
     except Exception as e:
         logger.error(f"Error handling /cancel command: {e}")
+
+@bot.message_handler(commands=['restart'])
+def handle_restart_command(message):
+    """Handle /restart command - restart the bot."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /restart command from chat {chat_id}")
+    
+    try:
+        # Cancel any running process
+        if chat_id in active_process:
+            try:
+                active_process[chat_id].terminate()
+                del active_process[chat_id]
+            except Exception:
+                pass
+        
+        bot.reply_to(message, "🔄 Restarting bot...", parse_mode="MarkdownV2")
+        
+        # Clear all sessions
+        session_store.clear()
+        logger.info("Cleared all sessions")
+        
+        # Wait a moment then restart
+        import time
+        time.sleep(2)
+        
+        # Kill and restart the process
+        import os
+        logger.info("Restarting with: python main.py")
+        os.execv(sys.executable, [sys.executable, "main.py"])
+        
+    except Exception as e:
+        logger.error(f"Error handling /restart command: {e}")
+        escaped_error = escape_markdown_v2(f"❌ Failed to restart: {str(e)}\n\nPlease restart manually.")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
         escaped_error = escape_markdown_v2(f"Error: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
