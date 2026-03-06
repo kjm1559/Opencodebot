@@ -171,9 +171,9 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
         emoji_parts.append(f"❌ {summary['errors']} errors")
     
     if emoji_parts:
-        message_lines.append("\n\n✨ Activities")
+        message_lines.append("\n✨ Activities:")
         for item in emoji_parts:
-            message_lines.append(f"  • {item}")
+            message_lines.append(f"\n  • {item}")
     
     return "".join(message_lines), detail_text
 
