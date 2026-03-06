@@ -1,12 +1,13 @@
 # OpenCode Telegram Controller
 
-A Telegram bot that controls the OpenCode CLI via Telegram commands with intelligent typing indicators and session management.
+A Telegram bot that controls the OpenCode CLI via Telegram commands with real-time updates and session management.
 
 ## Features
 
-- **Real-time Status Updates**: Tool execution status (file read/write, bash commands, etc.)
-- **Summary Mode**: Clean emoji-based summary with detail view button
-- **Logs to Terminal**: Full command output streamed to terminal, only summary to Telegram
+- **Real-time Status Updates**: Tool execution status with file path details
+- **Typing Indicators**: Shows typing status during command execution
+- **Summary Mode**: Clean emoji-based summary with detailed breakdown
+- **Logs to Terminal**: Full DEBUG-level command output to terminal
 - **Project Management**: List, switch, and clone projects with session awareness
 - **Session Management**: Create, list, set, and reset sessions
 - **Model Management**: List and set AI models from opencode
@@ -45,9 +46,9 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 ### Session Management
 - `/session` - List available sessions
 - `/set_session <id>` - Set current session
-- `/current_session` - Show current session
-- `/new_session` - Create new session
-- `/compact <session_id>` - Compact current session
+- `/current_session` - Show current session (auto-extracted from opencode)
+- `/new_session` - Create new session  
+- `/compact <session_id>` - Compact session
 - `/reset` - Clear current session
 
 ### General
@@ -56,11 +57,22 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with intelli
 
 ## Output Behavior
 
-- **Terminal**: Full command output streamed in real-time
-- **Telegram**: Only summary with:
-  - Real-time tool status (📖 파일 읽는 중..., ✏️ 파일 수정 중..., 💻 명령어 실행 중...)
-  - Final summary with emoji-based statistics
-  - AI response preview (up to 2500 characters)
+### Real-time Messages (Streamed)
+- 📖 Reading: `src/file.py` (file path shown, truncated to 150 chars)
+- ✏️ Modifying: `README.md`
+- 💻 Running: `git status`
+- 🌐 Fetching: `https://example.com`
+- 🔍 Searching: `**/*.py`
+- 📝 Session: `abc123...` (auto-extracted session ID)
+- ⚠️ Error: `error message preview`
+
+### Completion Messages
+- 📊 Summary: Activity stats with file counts
+- 📋 Full Details: AI response in chunks (3500 chars each)
+- ✅ Completed: Final completion indicator
+
+**Terminal**: Full DEBUG output with timestamps  
+**Telegram**: Minimal action messages + summary at end
 
 ## Requirements
 
@@ -78,7 +90,7 @@ pip install -r requirements.txt
 2. Set environment variables:
 ```bash
 export TELEGRAM_BOT_TOKEN="your_bot_token_here"
-export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional, for restricting to specific chat
+export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional
 ```
 
 3. Run the bot:
@@ -97,19 +109,31 @@ Projects are stored in `~/projects/` directory:
 
 ## Implementation Details
 
-The bot uses JSON formatting for all OpenCode commands:
+The bot uses JSON formatting for all OpenCode commands (`--format json`):
 
-- **Filters**: `step_start`/`step_finish` messages excluded from Telegram
-- **Real-time**: Tool execution status sent to Telegram (e.g., "📖 파일 읽는 중...")
-- **Terminal**: Full output streamed to stdout for debugging
-- **Telegram**: Only summary with emoji statistics and AI response preview
+- **Action Messages**: Extracted from `tool_use` events with file/path details
+- **Session Extraction**: Automatic from `session_started` events
+- **Error Handling**: Real-time error notifications from `error` events
+- **Deduplication**: Same action messages not repeated
+- **Truncation**: Long values truncated to 150 chars + "..."
+- **Logging**: DEBUG level to terminal with timestamps
 
-Summary includes:
-- 📄 Files created
-- ✏️ Files modified  
-- 📖 Files read
-- 💻 Bash commands executed
-- ❌ Errors
+**Message Flow**:
+```
+[Command start]
+  ↓
+🔄 Typing indicator
+  ↓
+📖 Reading: src/file.py
+✏️ Modifying: README.md  (real-time actions)
+  ↓
+⚠️ Error: optional error
+  ↓
+📊 Summary (activity stats)
+📋 Full Details (if available)
+  ↓
+✅ Completed (typing stops)
+```
 
 ## Folder Structure
 
