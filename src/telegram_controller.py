@@ -408,27 +408,48 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
     if part is None:
         part = {}
     
+    # Map tool names to action emoji and parameter keys (support both old and new formats)
     action_map = {
-        "read": ("📖 Reading", "path"),
-        "edit": ("✏️ Modifying", "path"),
-        "write": ("📄 Writing", "path"),
-        "bash": ("💻 Running", "command"),
-        "webfetch": ("🌐 Fetching", "url"),
-        "glob": ("🔍 Searching", "pattern"),
-        "grep": ("🔍 Grep", "pattern")
+        "read": ("📖 Reading", ["filePath", "path", "file"]),
+        "edit": ("✏️ Modifying", ["filePath", "path", "file"]),
+        "write": ("📄 Writing", ["filePath", "path", "file"]),
+        "bash": ("💻 Running", ["command"]),
+        "webfetch": ("🌐 Fetching", ["url"]),
+        "glob": ("🔍 Searching", ["pattern"]),
+        "grep": ("🔍 Grep", ["pattern"]),
+        "ast_grep": ("🔍 Searching", ["pattern"]),
+        "skill": ("🔌 Using", ["name"]),
+        "question": ("❓ Asking", ["questions"]),
     }
     
+    # Normalize tool name
     base_tool = tool.split("_")[0] if "_" in tool else tool
-    for key, (action, param_key) in action_map.items():
-        if key in base_tool:
-            # Try to get input directly from inputs or state input
-            input_data = {}
-            if "inputs" in part:
-                input_data = part["inputs"]
-            elif "state" in part and "input" in part["state"]:
-                input_data = part["state"]["input"]
-            
-            value = input_data.get(param_key, "")
+    
+    # Find matching action with param keys
+    matched_action = None
+    param_keys = []
+    for key, (action, keys) in action_map.items():
+        if key in base_tool or base_tool in key:
+            matched_action = action
+            param_keys = keys
+            break
+    
+    if not matched_action:
+        return None
+    
+    # Try to get input directly from state/input or inputs
+    input_data = {}
+    if "inputs" in part:
+        input_data = part["inputs"]
+    elif "state" in part and isinstance(part["state"], dict) and "input" in part["state"]:
+        input_data = part["state"]["input"]
+    
+    # Try each parameter key in order
+    value = None
+    for key in param_keys:
+        if input_data.get(key):
+            value = input_data[key]
+            break
             
             # Prepare short message (truncated)
             if value and isinstance(value, str):
@@ -499,7 +520,8 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                         logger.debug(f"Part: {part}")
                         
                         result = get_action_message(tool, status, part)
-                        if result and "finished" not in status:
+                        # Send action for "completed" or "started" status (not "finished")
+                        if result and status in ("completed", "started", "success"):
                             action_msg, full_detail = result
                             
                             # Send typing before each message
