@@ -52,6 +52,7 @@ try:
         types.BotCommand("new_session", "Create new session"),
         types.BotCommand("compact", "Compact current session"),
         types.BotCommand("reset", "Clear current session"),
+        types.BotCommand("restart", "Restart bot (clears all sessions)"),
         types.BotCommand("help", "Show this help message"),
     ])
     logger.info("Successfully set bot commands")
@@ -638,6 +639,9 @@ def handle_project_command(message):
     chat_id = str(message.chat.id)
     project_input = message.text[len('/project'):].strip()
     
+    # Get current project first (needed for git clone workspace path)
+    current_project = get_current_project(chat_id)
+    
     if not project_input:
         # List all projects
         projects = list_projects()
@@ -670,7 +674,8 @@ def handle_project_command(message):
         idx = int(project_input) - 1
         
         if 0 <= idx < len(projects):
-            set_current_project(chat_id, get_project_path(projects[idx]))
+            new_project_path = get_project_path(projects[idx])
+            set_current_project(chat_id, new_project_path)
             bot.reply_to(
                 message,
                 escape_markdown_v2(f"📁 Switched to: {projects[idx]}\n🔄 Session preserved"),
@@ -686,8 +691,9 @@ def handle_project_command(message):
         
         try:
             repo_name = project_input.split('/')[-1].replace('.git', '')
-            clone_path = os.path.expanduser(f"~/projects/{repo_name}")
-            os.makedirs(os.path.dirname(clone_path), exist_ok=True)
+            workspace_dir = os.path.join(current_project or ".", "workspace")
+            clone_path = os.path.join(workspace_dir, repo_name)
+            os.makedirs(workspace_dir, exist_ok=True)
             
             result = subprocess.run(
                 ['git', 'clone', project_input, clone_path],
@@ -700,13 +706,13 @@ def handle_project_command(message):
                 bot.reply_to(message, escape_markdown_v2(f"❌ Clone failed: {result.stderr}"), parse_mode="MarkdownV2")
                 return
             
+            # Set the cloned project as current
             set_current_project(chat_id, clone_path)
-            set_current_session_id(chat_id, "")
-            bot.reply_to(
-                message,
-                escape_markdown_v2(f"📁 Cloned: {repo_name}\n✨ New session created"),
-                parse_mode="MarkdownV2"
-            )
+            
+            # Create a new session for this project
+            logger.info(f"Creating new session for project {repo_name}")
+            stream_opencode_output(chat_id, [clone_path, "run", "Initialize project", "--format", "json"])
+            
         except subprocess.TimeoutExpired:
             bot.reply_to(message, escape_markdown_v2("❌ Clone timed out"), parse_mode="MarkdownV2")
         except Exception as e:
@@ -1120,7 +1126,7 @@ def handle_restart_command(message):
             except Exception:
                 pass
         
-        bot.reply_to(message, "🔄 Restarting bot...", parse_mode="MarkdownV2")
+        bot.reply_to(message, escape_markdown_v2("🔄 Restarting bot..."), parse_mode="MarkdownV2")
         
         # Clear all sessions
         session_store.clear()
