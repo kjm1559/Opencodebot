@@ -39,9 +39,12 @@ except ImportError as e:
 # Telegram MarkdownV2 escape function
 def escape_markdown_v2(text: str) -> str:
     """Telegram MarkdownV2 escape function."""
+    # Escape special characters for Telegram MarkdownV2
     escape_chars = r'_*$()~`>#+\-=|{}.!'
-    escaped_text = re.sub(f'([{re.escape(escape_chars)}])', r'\\1', text)
-    return escaped_text
+    result = text
+    for char in escape_chars:
+        result = result.replace(char, f'\\{char}')
+    return result
 
 # Send startup message if TELEGRAM_CHAT_ID is set
 def send_startup_message():

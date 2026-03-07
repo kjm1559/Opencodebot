@@ -1,3 +1,0 @@
-# Requirements for OpenCode Telegram Controller
-
-pytelegrambotapi==4.31.0
