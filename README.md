@@ -127,6 +127,7 @@ The bot uses JSON formatting for all OpenCode commands (`--format json`):
 - **Session Extraction**: Automatic from `sessionID` events in opencode output
 - **Error Handling**: Real-time error notifications from `error` events
 - **Truncation**: Long values truncated to 100 chars + "...", inputs >500 chars sent separately
+- **MarkdownV2 Formatting**: All messages properly escaped for Telegram MarkdownV2
 - **Logging**: DEBUG level to terminal with timestamps
 
 **Message Flow**:
