@@ -103,11 +103,13 @@ MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
 MAX_PREVIEW_LENGTH = 2500  # Max characters for response preview
 
 def escape_only_dots(text: str) -> str:
-    """Escape special chars for Telegram MarkdownV2 (\ first to avoid double-escape)."""
-    # Must escape \ first before other chars
+    """Escape special chars for Telegram MarkdownV2, skip ... pattern."""
+    # Protect ... before escaping
+    text = text.replace("...", "@@@")
     result = text.replace("\\", "\\\\")
-    # Then escape other special chars
-    return result.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=").replace("+", r"\+")
+    result = result.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=").replace("+", r"\+")
+    # Restore ... unchanged
+    return result.replace("@@@", "...")
 
 def collect_output_for_summary():
     """Initialize output collection."""
