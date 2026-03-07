@@ -468,6 +468,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             text=True,
             bufsize=1
         )
+        active_process[chat_id] = process
         
         collect_data = collect_output_for_summary()
         
@@ -582,7 +583,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             for line in process.stderr:
                 logger.error("STDERR: %s", line.strip())
         
-        return_code = process.poll()
+        return_code = process.wait()
         if return_code != 0:
             logger.error(f"opencode command exited with code {return_code}")
         
@@ -711,7 +712,8 @@ def handle_project_command(message):
         if os.path.exists(workspace_dir) and os.path.isdir(workspace_dir):
             for item in os.listdir(workspace_dir):
                 item_path = os.path.join(workspace_dir, item)
-                if os.path.isdir(item_path) and os.path.exists(os.path.join(item_path, ".git")):
+                git_path = os.path.join(item_path, ".git")
+                if os.path.isdir(item_path) and (os.path.isfile(git_path) or os.path.isdir(git_path)):
                     workspace_projects.append(item)
         
         response = "📁 Workspace Projects:\n\n"
@@ -1044,26 +1046,38 @@ def handle_current_session_command(message):
         # First check in-memory store
         session_id = get_current_session_id(chat_id)
         
-        # If not found or empty, get latest from opencode
         if not session_id:
-            result = run_opencode_command(["session", "list", "--format", "json"])
-            sessions_data = json.loads(result.stdout)
-            if sessions_data:
-                # Sort by updated timestamp (most recent first)
-                latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
-                session_id = latest_session['id']
-                logger.info(f"Auto-detected latest session: {session_id}")
+            session_id = None
+            try:
+                result = run_opencode_command(["session", "list", "--format", "json"])
+                sessions_data = json.loads(result.stdout)
+                
+                if sessions_data and isinstance(sessions_data, list):
+                    latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
+                    session_id = latest_session.get('id', '')
+                    if session_id:
+                        logger.info(f"Auto-detected latest session: {session_id}")
+                else:
+                    logger.warning("Session list is empty or not a list")
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse session list JSON: {e}")
+            except (KeyError, ValueError) as e:
+                logger.error(f"Error getting latest session: {e}")
         
         if session_id:
-            escaped_message = escape_markdown_v2(f"Current session: {session_id}")
+            escaped_message = escape_markdown_v2(f"📝 Current session: {session_id}")
             bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         else:
-            escaped_message = escape_markdown_v2("No active session.")
+            escaped_message = escape_markdown_v2("❌ No active session.\n\nUse /new_session to create one.")
             bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
             
+    except subprocess.CalledProcessError as e:
+        logger.error(f"opencode command failed in /current_session: {e}")
+        escaped_error = escape_markdown_v2("❌ Failed to query sessions. Please check opencode status.")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
     except Exception as e:
-        logger.error(f"Error handling /current_session command: {e}")
-        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        logger.error(f"Unexpected error in /current_session: {e}")
+        escaped_error = escape_markdown_v2(f"❌ Error: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
 @bot.message_handler(commands=['new_session'])
@@ -1076,35 +1090,18 @@ def handle_new_session_command(message):
         # Show typing indicator
         bot.send_chat_action(chat_id, 'typing')
         
-        # Create a new session by running a simple command - let opencode handle session creation automatically
-        escaped_message = escape_markdown_v2("Creating new session... Please wait.")
-        bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
+        # Clear the current session for this chat
+        session_id = get_current_session_id(chat_id)
+        if session_id:
+            logger.info(f"Cleared current session: {session_id}")
         
-        # Run a simple command that will trigger session creation
-        # We don't need to use --continue here since opencode creates session automatically
-        # Use a simple command instead of "new session"
-        command_args = ["run", "create a new session", "--format", "json"]
-        result = run_opencode_command(command_args)
+        # Clear session from store - next command will create a new session automatically
+        set_current_session_id(chat_id, "")
         
-        # Get the latest session to make sure we have access to it
-        try:
-            result = run_opencode_command(["session", "list", "--format", "json"])
-            sessions_data = json.loads(result.stdout)
-            if sessions_data:
-                # Take the first available session (usually the most recent one)
-                # Instead of trying to sort by timestamps, we'll take the first one for simplicity
-                selected_session_id = sessions_data[0]['id']
-                set_current_session_id(chat_id, selected_session_id)
-                escaped_message = escape_markdown_v2(f"New session created and set: {selected_session_id}")
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-            else:
-                escaped_message = escape_markdown_v2("New session created but unable to determine session ID.")
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-        except Exception as e:
-            logger.error(f"Error getting session list after creating new session: {e}")
-            # If we can't get the latest session, let's try to create a better fallback
-            escaped_message = escape_markdown_v2("New session created successfully (ID not determinable).")
-            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        escaped_message = escape_markdown_v2("✅ Session cleared.")
+        escaped_message += "\n\n💡 Your next command will create a new session automatically."
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        logger.info(f"Cleared session for chat {chat_id}")
                 
     except Exception as e:
         logger.error(f"Error handling /new_session command: {e}")
