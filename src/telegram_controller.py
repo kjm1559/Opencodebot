@@ -414,8 +414,17 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
                 short_msg = value[:100] + "..." if len(value) > 100 else value
                 return f"{action}: {short_msg}", value
             elif input_data:
-                # No specific param name, but have input - show as JSON
+                # No specific param name, but have input - extract simplest meaningful value
                 import json
+                # Try to get a simple string from input data
+                if isinstance(input_data, dict):
+                    # Find first simple string value
+                    for v in input_data.values():
+                        if isinstance(v, str) and len(v) < 500:
+                            short_msg = v[:100] + "..." if len(v) > 100 else v
+                            return f"{action}: {short_msg}", v
+                
+                # Fall back to JSON if no simple value found
                 json_str = json.dumps(input_data, indent=2)
                 short_msg = json_str[:100] + "..." if len(json_str) > 100 else json_str
                 return f"{action}:\n```{short_msg}```", json_str
