@@ -79,8 +79,10 @@ try:
         types.BotCommand("compact", "Compact current session"),
         types.BotCommand("reset", "Clear current session"),
         types.BotCommand("restart", "Restart bot (clears all sessions)"),
-        types.BotCommand("project_list", "List all projects"),
+        types.BotCommand("project_list", "List workspace and root projects"),
         types.BotCommand("current_project", "Show current project"),
+        types.BotCommand("workspace", "Set workspace project"),
+        types.BotCommand("root", "Set project root"),
         types.BotCommand("help", "Show this help message"),
     ])
     logger.info("Successfully set bot commands")
@@ -651,18 +653,17 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             parse_mode="MarkdownV2"
         )
 
-@bot.message_handler(commands=['project', 'project_list'])
+@bot.message_handler(commands=['project'])
 def handle_project_command(message):
     """Handle /project command - list projects, switch to project, or clone new project."""
     chat_id = str(message.chat.id)
-    command = message.text.split()[0]
-    project_input = message.text[len(command):].strip()
+    project_input = message.text[len('/project'):].strip()
     
     # Get current project first (needed for git clone workspace path)
     current_project = get_current_project(chat_id)
     
     if not project_input:
-        # List all projects
+        # List all projects in ~/projects/
         projects = list_projects()
         current_project = get_current_project(chat_id)
         
@@ -753,6 +754,159 @@ def handle_project_command(message):
     else:
         bot.reply_to(message, escape_markdown_v2(f"❌ Not found: {project_input}"), parse_mode="MarkdownV2")
 
+@bot.message_handler(commands=['project_list'])
+def handle_project_list_command(message):
+    """Handle /project_list command - show workspace and root directories."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /project_list command from chat {chat_id}")
+    
+    try:
+        project_input = message.text[len('/project_list'):].strip()
+        
+        # Get current project path
+        current_project = get_current_project(chat_id)
+        if not current_project:
+            current_project = "."  # Default to current directory
+        
+        current_project = os.path.expanduser(current_project)
+        
+        response = "📁 Project List:\n\n"
+        
+        # Show workspace directory if it exists
+        workspace_dir = os.path.join(current_project, "workspace")
+        if os.path.exists(workspace_dir) and os.path.isdir(workspace_dir):
+            response += "📓 Workspace Projects:\n"
+            workspace_items = []
+            for item in os.listdir(workspace_dir):
+                item_path = os.path.join(workspace_dir, item)
+                if os.path.isdir(item_path):
+                    # Check if it's a git repo
+                    if os.path.exists(os.path.join(item_path, ".git")):
+                        marker = "✅" if current_project and item_path in str(current_project) else " "
+                        workspace_items.append((marker, item))
+            
+            if workspace_items:
+                for marker, item in sorted(workspace_items):
+                    response += f"  {marker} {item}\n"
+            else:
+                response += "  (empty)\n"
+            response += "\n"
+        
+        # Show root directory option
+        response += "📁 Root:\n"
+        marker = "✅" if current_project and os.path.abspath(current_project) in os.path.abspath(current_project) else " "
+        response += f"  {marker} . (current project root: {os.path.basename(os.path.abspath(current_project))})\n\n"
+        
+        # Instructions
+        response += "\n📝 Instructions:\n"
+        response += "  Use /workspace <workspace-name> to set a workspace project\n"
+        response += "  Use /root to set the current project root\n"
+        
+        # Handle project selection via argument
+        if project_input:
+            if project_input == "root" or project_input == ".":
+                # Set to current root
+                set_current_project(chat_id, os.path.abspath(current_project))
+                bot.reply_to(
+                    message,
+                    escape_markdown_v2(f"📁 Set to project root: {os.path.abspath(current_project)}"),
+                    parse_mode="MarkdownV2"
+                )
+                return
+            
+            # Try to find in workspace
+            if os.path.exists(workspace_dir):
+                workspace_path = os.path.join(workspace_dir, project_input)
+                if os.path.exists(workspace_path):
+                    set_current_project(chat_id, workspace_path)
+                    bot.reply_to(
+                        message,
+                        escape_markdown_v2(f"📁 Set workspace project: {project_input}"),
+                        parse_mode="MarkdownV2"
+                    )
+                    return
+        
+        escaped_response = escape_markdown_v2(response)
+        bot.reply_to(message, escaped_response, parse_mode="MarkdownV2")
+    
+    except Exception as e:
+        logger.error(f"Error handling /project_list command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['root'])
+def handle_root_command(message):
+    """Handle /root command - set to project root."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /root command from chat {chat_id}")
+    
+    try:
+        # Get current project path
+        current_project = get_current_project(chat_id)
+        
+        if current_project:
+            root_path = os.path.abspath(os.path.expanduser(current_project))
+            set_current_project(chat_id, root_path)
+            bot.reply_to(
+                message,
+                escape_markdown_v2(f"📁 Set to project root:\n{root_path}"),
+                parse_mode="MarkdownV2"
+            )
+        else:
+            bot.reply_to(
+                message,
+                escape_markdown_v2("❌ No project set.\n\nUse /project_list to see available projects."),
+                parse_mode="MarkdownV2"
+            )
+    
+    except Exception as e:
+        logger.error(f"Error handling /root command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['workspace'])
+def handle_workspace_command(message):
+    """Handle /workspace command - set workspace project."""
+    chat_id = str(message.chat.id)
+    workspace_name = message.text[len('/workspace'):].strip()
+    logger.info(f"Received /workspace command for {workspace_name} from chat {chat_id}")
+    
+    try:
+        if not workspace_name:
+            bot.reply_to(
+                message,
+                escape_markdown_v2("❌ Please provide workspace name.\n\nUsage: /workspace <workspace-name>"),
+                parse_mode="MarkdownV2"
+            )
+            return
+        
+        # Get current project path
+        current_project = get_current_project(chat_id)
+        if not current_project:
+            current_project = "."
+        
+        workspace_dir = os.path.join(os.path.expanduser(current_project), "workspace")
+        workspace_path = os.path.join(workspace_dir, workspace_name)
+        
+        if os.path.exists(workspace_path):
+            set_current_project(chat_id, workspace_path)
+            bot.reply_to(
+                message,
+                escape_markdown_v2(f"📁 Set workspace project: {workspace_name}"),
+                parse_mode="MarkdownV2"
+            )
+        else:
+            bot.reply_to(
+                message,
+                escape_markdown_v2(f"❌ Workspace not found: {workspace_name}\n\nUse /project_list to see available workspaces."),
+                parse_mode="MarkdownV2"
+            )
+    
+    except Exception as e:
+        logger.error(f"Error handling /workspace command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
 @bot.message_handler(commands=['help'])
 def handle_help_command(message):
     """Handle /help command."""
@@ -770,7 +924,9 @@ def handle_help_command(message):
             "/project - List available projects\n"
             "/project <number> - Switch to project by number (keeps session)\n"
             "/project <git-url> - Clone new project (creates new session)\n"
-            "/project_list - List all available projects\n"
+            "/project_list - List workspace and root projects\n"
+            "/workspace <name> - Set workspace project\n"
+            "/root - Set project root\n"
             "/current_project - Show current project\n"
             "/model [name] - List/set current model\n"
             "/session - List available sessions\n"
