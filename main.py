@@ -5,7 +5,7 @@ Main entry point for OpenCode Telegram Controller
 
 import sys
 import os
-from src.telegram_controller import bot, logger, TELEGRAM_BOT_TOKEN
+from src.telegram_controller import bot, logger, TELEGRAM_BOT_TOKEN, send_startup_message
 
 def main():
     """Main entry point."""
@@ -13,6 +13,7 @@ def main():
     if not TELEGRAM_BOT_TOKEN:
         logger.error("Telegram bot token not found")
         sys.exit(1)
+    send_startup_message()
     try:
         bot.infinity_polling()
     except KeyboardInterrupt:

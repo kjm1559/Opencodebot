@@ -36,6 +36,29 @@ except ImportError as e:
     logger.error(f"Failed to import telebot: {e}")
     sys.exit(1)
 
+# Telegram MarkdownV2 escape function
+def escape_markdown_v2(text: str) -> str:
+    """Telegram MarkdownV2 escape function."""
+    escape_chars = r'_*$()~`>#+\-=|{}.!'
+    escaped_text = re.sub(f'([{re.escape(escape_chars)}])', r'\\1', text)
+    return escaped_text
+
+# Send startup message if TELEGRAM_CHAT_ID is set
+def send_startup_message():
+    """Send startup message to configured chat ID."""
+    if TELEGRAM_CHAT_ID:
+        try:
+            bot.send_message(
+                TELEGRAM_CHAT_ID,
+                escape_markdown_v2("🤖 Bot started!\nReady to accept commands."),
+                parse_mode="MarkdownV2"
+            )
+            logger.info("Startup message sent")
+        except Exception as e:
+            logger.warning(f"Failed to send startup message: {e}")
+    else:
+        logger.info("TELEGRAM_CHAT_ID not set, skipping startup message")
+
 # Set bot commands for Telegram UI
 try:
     from telebot import types
@@ -69,16 +92,6 @@ active_process: Dict[str, Any] = {}  # Track active processes for cancel
 COMMAND_TIMEOUT = 300  # 5 minutes timeout for commands
 MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
 MAX_PREVIEW_LENGTH = 2500  # Max characters for response preview
-
-def escape_markdown_v2(text: str) -> str:
-    """
-    Telegram MarkdownV2 escape function
-    """
-    # Characters that need to be escaped in MarkdownV2
-    escape_chars = r'_*$()~`>#+\-=|{}.!'
-    # Use re.escape on each character and create a pattern to match any of these characters
-    escaped_text = re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
-    return escaped_text
 
 def escape_only_dots(text: str) -> str:
     """Escape only '.' for Telegram MarkdownV2 ('.' -> '\\.')."""
