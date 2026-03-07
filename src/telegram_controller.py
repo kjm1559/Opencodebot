@@ -426,9 +426,6 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to terminal, send only summary to Telegram."""
     try:
-        # Send typing indicator
-        bot.send_chat_action(chat_id, 'typing')
-        
         sent_messages = set()
         last_action = None
         
@@ -474,17 +471,21 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                         if result and "finished" not in status:
                             action_msg, full_detail = result
                             
+                            # Send typing before each message
+                            bot.send_chat_action(chat_id, 'typing')
+                            
                             # Send action message (every occurrence, not deduplicated)
                             escaped_msg = escape_markdown_v2(action_msg)
                             
                             try:
                                 bot.send_message(chat_id, escaped_msg, parse_mode="MarkdownV2")
                                 logger.info(f"Sending action: {action_msg}")
-                                
+           
                                 # Send full detail separately if very long
                                 if full_detail and len(full_detail) > 500:
                                     detail_preview = full_detail[:200] + "..."
                                     detail_msg = f"📋 Input:\n```{detail_preview}```"
+                                    bot.send_chat_action(chat_id, 'typing')
                                     bot.send_message(chat_id, escape_markdown_v2(detail_msg), parse_mode="MarkdownV2")
                             except Exception as e:
                                 logger.warning(f"Failed to send action: {e}")
@@ -497,6 +498,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                             if msg != last_action:
                                 last_action = msg
                                 try:
+                                    bot.send_chat_action(chat_id, 'typing')
                                     bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
                                 except Exception:
                                     pass
@@ -510,6 +512,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                             if msg not in sent_messages:
                                 sent_messages.add(msg)
                                 try:
+                                    bot.send_chat_action(chat_id, 'typing')
                                     bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
                                 except Exception as e:
                                     logger.warning(f"Failed to send session: {e}")
@@ -522,6 +525,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                             if msg not in sent_messages:
                                 sent_messages.add(msg)
                                 try:
+                                    bot.send_chat_action(chat_id, 'typing')
                                     bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
                                 except Exception:
                                     pass
@@ -535,6 +539,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                             if msg not in sent_messages:
                                 sent_messages.add(msg)
                                 try:
+                                    bot.send_chat_action(chat_id, 'typing')
                                     bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
                                 except Exception as e:
                                     logger.warning(f"Failed to send error: {e}")
@@ -564,6 +569,8 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         escaped_summary = escape_only_dots(summary_text)
         
         try:
+            # Send typing before summary
+            bot.send_chat_action(chat_id, 'typing')
             bot.send_message(
                 chat_id,
                 f"📊 Summary:\n\n{escaped_summary}",
@@ -584,6 +591,8 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                     else:
                         chunk_msg = f"📋 Full Details (cont.) #{idx}:\n\n{escape_markdown_v2(chunk)}"
                     
+                    # Send typing before each detail chunk
+                    bot.send_chat_action(chat_id, 'typing')
                     bot.send_message(chat_id, chunk_msg, parse_mode="MarkdownV2")
                     logger.info(f"Sent detail chunk {idx}/{len(chunks)}")
             
@@ -591,6 +600,7 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
         except Exception as e:
             logger.error(f"Error sending summary: {e}")
             try:
+                bot.send_chat_action(chat_id, 'typing')
                 bot.send_message(chat_id, f"📊 Summary:\n{escape_markdown_v2(summary_text)}", parse_mode="MarkdownV2")
             except Exception as e2:
                 logger.error(f"Error sending plain summary: {e2}")
