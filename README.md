@@ -18,6 +18,8 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 - **Usage Statistics**: Track opencode usage with detailed statistics
 - **Session History**: View and manage recent sessions
 - **Command Cancellation**: Cancel running commands
+- **Bot Restart**: `/restart` command to restart the bot with startup notification
+- **Startup Notification**: Sends "Bot started!" message on launch (if `TELEGRAM_CHAT_ID` set)
 - **Error Handling**: Comprehensive error reporting and logging
 
 ## Commands
@@ -46,7 +48,7 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 /project git@github.com:user/repo.git  # Clone and create new session
 ```
 
-### Session Management
+### Session & Bot Management
 - `/session` - List available sessions
 - `/set_session <id>` - Set current session
 - `/current_session` - Show current session (auto-detects latest if not set)
@@ -54,6 +56,7 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 - `/compact` - Compact current session (auto-detects latest if not set)
 - `/compact <session_id>` - Compact specific session
 - `/reset` - Clear current session
+- `/restart` - Restart bot (clears all sessions, sends startup notification)
 
 ### General
 - `/help` - Show help message
