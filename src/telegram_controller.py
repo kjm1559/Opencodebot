@@ -39,10 +39,12 @@ except ImportError as e:
 # Telegram MarkdownV2 escape function
 def escape_markdown_v2(text: str) -> str:
     """Telegram MarkdownV2 escape function."""
-    # Escape special characters for Telegram MarkdownV2
-    escape_chars = r'_*$()~`>#+\-=|{}.!'
+    # Escape special characters for Telegram MarkdownV2 (in order: \ first!)
     result = text
-    for char in escape_chars:
+    # Must escape \ first to avoid double-escaping
+    result = result.replace('\\', '\\\\')
+    # Then escape other special chars
+    for char in r'_*$()~`>#+-=|{}.!':
         result = result.replace(char, f'\\{char}')
     return result
 
