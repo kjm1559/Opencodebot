@@ -655,63 +655,23 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
 
 @bot.message_handler(commands=['project'])
 def handle_project_command(message):
-    """Handle /project command - list projects, switch to project, or clone new project."""
+    """Handle /project command - list workspace projects, switch, or clone."""
     chat_id = str(message.chat.id)
     project_input = message.text[len('/project'):].strip()
     
-    # Get current project first (needed for git clone workspace path)
+    # Get current project first (needed for workspace path)
     current_project = get_current_project(chat_id)
+    if not current_project:
+        current_project = "."
+    current_project = os.path.expanduser(current_project)
+    workspace_dir = os.path.join(current_project, "workspace")
     
-    if not project_input:
-        # List all projects in ~/projects/
-        projects = list_projects()
-        current_project = get_current_project(chat_id)
-        
-        if not projects:
-            bot.reply_to(
-                message,
-                escape_markdown_v2("📁 No projects in ~/projects/\n\nYou can clone with: /project \u003cgit-url>"),
-                parse_mode="MarkdownV2"
-            )
-            return
-        
-        response = "📁 Available Projects:\n\n"
-        for i, proj in enumerate(projects, 1):
-            marker = "✅" if current_project and proj in current_project else " "
-            response += f"{marker} {i}. {proj}\n"
-        
-        if current_project:
-            response += f"\n📍 Current: {current_project}"
-        else:
-            response += "\n📍 No project selected" + "\n\nUse /project \u003cnumber> or /project \u003cgit-url>"
-        
-        bot.reply_to(message, escape_markdown_v2(response), parse_mode="MarkdownV2")
-        return
-    
-    # Handle project number
-    if project_input.isdigit():
-        projects = list_projects()
-        idx = int(project_input) - 1
-        
-        if 0 <= idx < len(projects):
-            new_project_path = get_project_path(projects[idx])
-            set_current_project(chat_id, new_project_path)
-            bot.reply_to(
-                message,
-                escape_markdown_v2(f"📁 Switched to: {projects[idx]}\n🔄 Session preserved"),
-                parse_mode="MarkdownV2"
-            )
-        else:
-            bot.reply_to(message, escape_markdown_v2("❌ Invalid project number"), parse_mode="MarkdownV2")
-        return
-    
-    # Handle git URL
+    # Handle git URL (clone project)
     if project_input.startswith(('git@', 'http://', 'https://', 'git://')):
         bot.send_message(chat_id, escape_markdown_v2("🔄 Cloning..."), parse_mode="MarkdownV2")
         
         try:
             repo_name = project_input.split('/')[-1].replace('.git', '')
-            workspace_dir = os.path.join(current_project or ".", "workspace")
             clone_path = os.path.join(workspace_dir, repo_name)
             os.makedirs(workspace_dir, exist_ok=True)
             
@@ -730,8 +690,13 @@ def handle_project_command(message):
             set_current_project(chat_id, clone_path)
             
             # Create a new session for this project
-            logger.info(f"Creating new session for project {repo_name}")
-            stream_opencode_output(chat_id, [clone_path, "run", "Initialize project", "--format", "json"])
+            set_current_session_id(chat_id, "")
+            
+            bot.reply_to(
+                message,
+                escape_markdown_v2(f"📁 Cloned: {repo_name}\n✨ New session created"),
+                parse_mode="MarkdownV2"
+            )
             
         except subprocess.TimeoutExpired:
             bot.reply_to(message, escape_markdown_v2("❌ Clone timed out"), parse_mode="MarkdownV2")
@@ -739,18 +704,68 @@ def handle_project_command(message):
             bot.reply_to(message, escape_markdown_v2(f"❌ Error: {str(e)}"), parse_mode="MarkdownV2")
         return
     
-    # Handle project name or path
-    projects = list_projects()
-    if project_input in projects:
-        set_current_project(chat_id, get_project_path(project_input))
+    if not project_input:
+        # List workspace projects
+        workspace_projects = []
+        
+        if os.path.exists(workspace_dir) and os.path.isdir(workspace_dir):
+            for item in os.listdir(workspace_dir):
+                item_path = os.path.join(workspace_dir, item)
+                if os.path.isdir(item_path) and os.path.exists(os.path.join(item_path, ".git")):
+                    workspace_projects.append(item)
+        
+        response = "📁 Workspace Projects:\n\n"
+        
+        if not workspace_projects:
+            response += "(No projects in workspace)\n\n"
+        else:
+            for i, proj in enumerate(sorted(workspace_projects), 1):
+                marker = "✅" if current_project and proj in str(current_project) else " "
+                response += f"{marker} {i}. {proj}\n"
+        
+        if current_project:
+            response += f"\n📍 Current: {os.path.basename(str(current_project))}"
+        else:
+            response += "\n📍 No project selected"
+        
+        response += "\n\n💡 Use /project \u003cgit-url\u003e to clone a project"
+        
+        bot.reply_to(message, escape_markdown_v2(response), parse_mode="MarkdownV2")
+        return
+    
+    # Handle project number
+    workspace_projects = []
+    if os.path.exists(workspace_dir) and os.path.isdir(workspace_dir):
+        for item in os.listdir(workspace_dir):
+            item_path = os.path.join(workspace_dir, item)
+            if os.path.isdir(item_path):
+                workspace_projects.append(item)
+    
+    if project_input.isdigit():
+        idx = int(project_input) - 1
+        
+        if 0 <= idx < len(workspace_projects):
+            selected_project = workspace_projects[idx]
+            project_path = os.path.join(workspace_dir, selected_project)
+            set_current_project(chat_id, project_path)
+            bot.reply_to(
+                message,
+                escape_markdown_v2(f"📁 Switched to: {selected_project}\n🔄 Session preserved"),
+                parse_mode="MarkdownV2"
+            )
+        else:
+            bot.reply_to(message, escape_markdown_v2("❌ Invalid project number"), parse_mode="MarkdownV2")
+        return
+    
+    # Handle project name (in workspace)
+    project_path = os.path.join(workspace_dir, project_input)
+    if os.path.exists(project_path) and os.path.isdir(project_path):
+        set_current_project(chat_id, project_path)
         bot.reply_to(
             message,
             escape_markdown_v2(f"📁 Switched to: {project_input}\n🔄 Session preserved"),
             parse_mode="MarkdownV2"
         )
-    elif os.path.exists(project_input):
-        set_current_project(chat_id, project_input)
-        bot.reply_to(message, escape_markdown_v2(f"📁 Set: {project_input}"), parse_mode="MarkdownV2")
     else:
         bot.reply_to(message, escape_markdown_v2(f"❌ Not found: {project_input}"), parse_mode="MarkdownV2")
 
