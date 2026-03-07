@@ -79,6 +79,8 @@ try:
         types.BotCommand("compact", "Compact current session"),
         types.BotCommand("reset", "Clear current session"),
         types.BotCommand("restart", "Restart bot (clears all sessions)"),
+        types.BotCommand("project_list", "List all projects"),
+        types.BotCommand("current_project", "Show current project"),
         types.BotCommand("help", "Show this help message"),
     ])
     logger.info("Successfully set bot commands")
@@ -649,11 +651,12 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
             parse_mode="MarkdownV2"
         )
 
-@bot.message_handler(commands=['project'])
+@bot.message_handler(commands=['project', 'project_list'])
 def handle_project_command(message):
     """Handle /project command - list projects, switch to project, or clone new project."""
     chat_id = str(message.chat.id)
-    project_input = message.text[len('/project'):].strip()
+    command = message.text.split()[0]
+    project_input = message.text[len(command):].strip()
     
     # Get current project first (needed for git clone workspace path)
     current_project = get_current_project(chat_id)
@@ -767,6 +770,8 @@ def handle_help_command(message):
             "/project - List available projects\n"
             "/project <number> - Switch to project by number (keeps session)\n"
             "/project <git-url> - Clone new project (creates new session)\n"
+            "/project_list - List all available projects\n"
+            "/current_project - Show current project\n"
             "/model [name] - List/set current model\n"
             "/session - List available sessions\n"
             "/set_session <id> - Set current session\n"
@@ -834,6 +839,27 @@ def handle_set_session_command(message):
         
     except Exception as e:
         logger.error(f"Error handling /set_session command: {e}")
+        escaped_error = escape_markdown_v2(f"Error: {str(e)}")
+        bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
+
+@bot.message_handler(commands=['current_project'])
+def handle_current_project_command(message):
+    """Handle /current_project command - show current project."""
+    chat_id = str(message.chat.id)
+    logger.info(f"Received /current_project command from chat {chat_id}")
+    
+    try:
+        current_project = get_current_project(chat_id)
+        
+        if current_project:
+            escaped_message = escape_markdown_v2(f"📁 Current Project:\n{current_project}")
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        else:
+            escaped_message = escape_markdown_v2("📁 No current project set.\n\nUse /project to list and select projects.")
+            bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+    
+    except Exception as e:
+        logger.error(f"Error handling /current_project command: {e}")
         escaped_error = escape_markdown_v2(f"Error: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
