@@ -1127,8 +1127,7 @@ def handle_new_session_command(message):
         # Clear session from store - next command will create a new session automatically
         set_current_session_id(chat_id, "")
         
-        escaped_message = escape_markdown_v2("✅ Session cleared.")
-        escaped_message += "\n\n💡 Your next command will create a new session automatically."
+        escaped_message = escape_markdown_v2("✅ Session cleared.\n\n💡 Your next command will create a new session automatically.")
         bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         logger.info(f"Cleared session for chat {chat_id}")
                 
