@@ -527,20 +527,20 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                         logger.debug(f"Part: {part}")
                         
                         result = get_action_message(tool, status, part)
-                        # Send action for "completed" or "started" status (not "finished")
+                        # Send action for completed/started/success status
                         if result and status in ("completed", "started", "success"):
                             action_msg, full_detail = result
                             
                             # Send typing before each message
                             bot.send_chat_action(chat_id, 'typing')
                             
-                            # Send action message (every occurrence, not deduplicated)
+                            # Send action message
                             escaped_msg = escape_markdown_v2(action_msg)
                             
                             try:
                                 bot.send_message(chat_id, escaped_msg, parse_mode="MarkdownV2")
                                 logger.info(f"Sending action: {action_msg}")
-           
+                                
                                 # Send full detail separately if very long
                                 if full_detail and len(full_detail) > 500:
                                     detail_preview = full_detail[:200] + "..."
@@ -1398,13 +1398,16 @@ def handle_message(message):
     # Get current model
     current_model = get_current_model(chat_id)
     
-    # Build base command with project path if set
-    base_args: List[str] = []
+    # Build base command
+    base_args = ["run", message.text, "--format", "json"]
+    
+    # Add project directory
     if current_project:
-        base_args.append(current_project)
+        base_args.extend(["--dir", current_project])
+    
+    # Add model
     if current_model:
-        base_args.append(f"--model={current_model}")
-    base_args.append("run")
+        base_args.extend(["--model", current_model])
     
     # Check if we have an active session
     current_session_id = get_current_session_id(chat_id)
@@ -1412,7 +1415,7 @@ def handle_message(message):
     if current_session_id:
         # Use the existing session
         logger.info(f"Using existing session {current_session_id}")
-        command_args = base_args + ["--session", current_session_id, message.text, "--format", "json"]
+        command_args = base_args + ["--session", current_session_id]
         stream_opencode_output(chat_id, command_args)
     else:
         # Check if there are existing sessions to use instead of always creating a new one
@@ -1424,18 +1427,16 @@ def handle_message(message):
             
             if sessions_data:
                 # Sort sessions by updated time (most recent first)
-                # Note: This assumes sessions have a 'updated' or 'created' timestamp
-                # If we don't have proper timestamp sorting, we'll use the last created session by default
                 latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
                 selected_session_id = latest_session['id']
                 
                 logger.info(f"Using latest existing session {selected_session_id}")
-                command_args = base_args + ["--session", selected_session_id, message.text, "--format", "json"]
+                command_args = base_args + ["--session", selected_session_id]
                 stream_opencode_output(chat_id, command_args)
             else:
                 # No existing sessions, create a new one using --continue
                 logger.info("No existing sessions, creating new session with --continue")
-                command_args = base_args + ["--continue", message.text, "--format", "json"]
+                command_args = base_args + ["--continue"]
                 
                 # Execute the command, but just send a message to user to indicate it's running
                 escaped_message = escape_markdown_v2("Executing command... Please wait.")
@@ -1447,7 +1448,7 @@ def handle_message(message):
             logger.error(f"Error checking existing sessions: {e}")
             # If we can't check sessions, fall back to creating a new one
             logger.info("Falling back to creating new session with --continue")
-            command_args = base_args + ["--continue", message.text, "--format", "json"]
+            command_args = base_args + ["--continue"]
             
             escaped_message = escape_markdown_v2("Executing command... Please wait.")
             bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
