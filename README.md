@@ -73,10 +73,11 @@ A Telegram bot that controls the OpenCode CLI via Telegram commands with real-ti
 - 📋 Input: `command details` (if input > 500 chars, separate preview message)
 - 📝 Session: `abc123...` (auto-extracted session ID)
 - ⚠️ Error: `error message preview`
+- 🔄 Step `N/..` (real-time progress)
 
 **Truncation Rules:**
 - ≤100 chars: Show full input
-- >100 chars: Truncate with "..."
+- >100 chars: Truncate with `...`
 - >500 chars: Separate message with 200 char preview
 
 ### Completion Messages
@@ -124,16 +125,34 @@ Projects are stored in `~/projects/` directory:
 
 The bot uses JSON formatting for all OpenCode commands (`--format json`):
 
+- **Command Structure**: `opencode run "message" --dir=/path --model=... --format=json`
 - **Action Messages**: Extracted from `tool_use` events with file/path details
 - **Real-time Streaming**: Every tool execution is shown immediately (no deduplication)
+- **Step Progress**: Shows `🔄 Step N/..` for multi-step operations
 - **Session Auto-Detection**: `/current_session` and `/compact` find latest session automatically
 - **Session Extraction**: Automatic from `sessionID` events in opencode output
 - **Error Handling**: Real-time error notifications from `error` events
-- **Truncation**: Long values truncated to 100 chars + "...", inputs >500 chars sent separately
+- **Truncation**: Long values truncated to 100 chars + `...`, inputs >500 chars sent separately
 - **MarkdownV2 Formatting**: All messages properly escaped for Telegram MarkdownV2
+- **Project Context**: Messages are sent with `--dir` parameter to execute in correct project
 - **Logging**: DEBUG level to terminal with timestamps
 
 **Message Flow**:
+```
+[Command: "fix the bug"]
+  ↓
+🔄 Typing indicator
+  ↓
+📖 Reading: src/file.py
+✏️ Modifying: README.md  (real-time actions)
+🔄 Step 3/5              (progress tracking)
+  ↓
+⚠️ Error: optional error
+  ↓
+📊 Summary (activity stats)
+📋 Full Details (if available)
+  ↓
+✅ Completed (typing stops)
 ```
 [Command start]
   ↓
