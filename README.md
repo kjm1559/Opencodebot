@@ -1,203 +1,209 @@
-# OpenCode Telegram Controller
+# Stock News API
 
-A Telegram bot that controls the OpenCode CLI via Telegram commands with real-time updates and session management.
+A FastAPI-based stock news aggregation system that collects news from multiple sources (Finnhub, AlphaVantage, GNews) with scheduled data collection via Celery.
 
 ## Features
 
-- **Real-time Streaming**: All tool executions shown immediately (no deduplication)
-- **Input Details Display**: Shows full command parameters in separate messages
-- **Smart Truncation**: 100 char preview with "...", long inputs in separate messages
-- **Typing Indicators**: Shows typing status during command execution
-- **Summary Mode**: Clean emoji-based summary with detailed breakdown
-- **Logs to Terminal**: Full DEBUG-level command output to terminal
-- **Project Management**: List, switch, and clone projects with session awareness
-- **Session Management**: Create, list, set, and reset sessions
-- **Session Auto-Detection**: `/current_session` and `/compact` auto-find latest session
-- **Model Management**: List and set AI models from opencode
-- **Status Monitoring**: View current model, project, and session status
-- **Usage Statistics**: Track opencode usage with detailed statistics
-- **Session History**: View and manage recent sessions
-- **Command Cancellation**: Cancel running commands
-- **Bot Restart**: `/restart` command to restart the bot with startup notification
-- **Startup Notification**: Sends "Bot started!" message on launch (if `TELEGRAM_CHAT_ID` set)
-- **Error Handling**: Comprehensive error reporting and logging
+- **Multi-source news aggregation**: Finnhub (primary), AlphaVantage, GNews (stubs)
+- **Scheduled collection**: Runs every 5 minutes via Celery Beat
+- **Deduplication**: SHA-256 hash-based article deduplication
+- **Async database**: PostgreSQL with async SQLAlchemy 2.0
+- **RESTful API**: FastAPI endpoints for news retrieval
+- **Containerized**: Docker Compose for PostgreSQL and Redis
 
-## Commands
+## Quick Start
 
-### Monitoring & Control
-- `/status` - Show current status (model, project, session)
-- `/stats` - Show opencode usage statistics
-- `/history` - Show recent session history (last 10)
-- `/cancel` - Cancel currently running command
-
-### Model Management
-- `/model` - List available models and show current model
-- `/model <model_name>` - Set current model (e.g., `/model ollama/qwen3.5:27b`)
-
-### Project Management
-- `/project` - List all projects in `~/projects/`
-- `/project <number>` - Switch to project by number (keeps existing session)
-- `/project <project-name>` - Switch to project by name (keeps existing session)
-- `/project <git-url>` - Clone new project from git URL (creates new session)
-
-**Examples:**
 ```bash
-/project              # List all projects
-/project 1            # Switch to first project (session preserved)
-/project myproject    # Switch to 'myproject' (session preserved)
-/project git@github.com:user/repo.git  # Clone and create new session
+# Start infrastructure
+docker compose up -d
+
+# Initialize database
+alembic upgrade head
+
+# Seed company data
+seed-db
+
+# Start API server
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Start Celery worker (separate terminal)
+celery -A app.celery worker -l info -Q news_collection,maintenance
+
+# Start Celery Beat (separate terminal)
+celery -A app.celery beat -l info
 ```
 
-### Session & Bot Management
-- `/session` - List available sessions
-- `/set_session <id>` - Set current session
-- `/current_session` - Show current session (auto-detects latest if not set)
-- `/new_session` - Create new session  
-- `/compact` - Compact current session (auto-detects latest if not set)
-- `/compact <session_id>` - Compact specific session
-- `/reset` - Clear current session
-- `/restart` - Restart bot (clears all sessions, sends startup notification)
+## API Documentation
 
-### General
-- `/help` - Show help message
-- Any message - Run OpenCode command with current project/session context
+- Swagger UI: http://localhost:8000/docs
+- Health check: http://localhost:8000/api/v1/health
 
-## Output Behavior
+## Environment Setup
 
-### Real-time Messages (Streamed)
-- 📖 Reading: `src/file.py` (every occurrence, no deduplication)
-- ✏️ Modifying: `README.md`
-- 💻 Running: `git status`
-- 🌐 Fetching: `https://example.com`
-- 🔍 Searching: `**/*.py`
-- 📋 Input: `command details` (if input > 500 chars, separate preview message)
-- 📝 Session: `abc123...` (auto-extracted session ID)
-- ⚠️ Error: `error message preview`
-- 🔄 Step `N/..` (real-time progress)
-
-**Truncation Rules:**
-- ≤100 chars: Show full input
-- >100 chars: Truncate with `...`
-- >500 chars: Separate message with 200 char preview
-
-### Completion Messages
-- 📊 Summary: Activity stats with file counts
-- 📋 Full Details: AI response in chunks (3500 chars each)
-- ✅ Completed: Final completion indicator
-
-**Terminal**: Full DEBUG output with timestamps  
-**Telegram**: All action messages streamed immediately + summary at end
-
-## Requirements
-
-- Python 3.9+
-- `opencode` CLI installed and accessible
-- Telegram bot token in `TELEGRAM_BOT_TOKEN` environment variable
-
-## Setup
-
-1. Install dependencies:
 ```bash
-pip install -r requirements.txt
+cp .env.example .env
 ```
 
-2. Set environment variables:
+Edit `.env` and add your API keys:
+```
+# Required
+FINNHUB_API_KEY=your_finnhub_key_here
+
+# Optional
+ALPHAVANTAGE_API_KEY=
+GNEWS_API_KEY=
+```
+
+## API Endpoints
+
+### Articles
+- `GET /api/v1/articles` - List articles with pagination and filters
+  - Query params: `page`, `page_size`, `ticker`, `source`
+- `GET /api/v1/articles/{id}` - Get single article by ID
+- `POST /api/v1/news/collect` - Manually trigger news collection
+
+### Companies  
+- `GET /api/v1/companies` - List all companies with article counts
+
+### Health
+- `GET /api/v1/health` - Health check endpoint
+
+## Project Structure
+
+```
+stock_info/
+├── app/
+│   ├── api/           # FastAPI routes
+│   │   ├── routes.py  # Endpoints
+│   │   └── schemas.py # Pydantic models
+│   ├── collectors/    # News API collectors
+│   │   ├── finnhub.py # Finnhub collector
+│   │   ├── alphavantage.py  # AlphaVantage stub
+│   │   └── gnews.py   # GNews stub
+│   ├── celery.py      # Celery configuration
+│   ├── config.py      # Settings
+│   ├── database.py    # Async DB session
+│   ├── main.py        # FastAPI app
+│   ├── models.py      # SQLAlchemy models
+│   └── tasks.py       # Celery tasks
+├── alembic/           # Database migrations
+├── scripts/           # Utility scripts
+│   └── seed_companies.py
+├── tests/             # Pytest test suite
+│   ├── unit/
+│   ├── integration/
+│   └── e2e/
+├── docker-compose.yml
+├── pyproject.toml
+└── README.md
+```
+
+## Database Schema
+
+**Tables:**
+- `companies`: Stock ticker information (ticker, name, sector)
+- `articles`: News content with deduplication
+- `article_companies`: Many-to-many association
+- `article_signals`: Sentiment/relevance scores
+
+**Deduplication:**
+Articles are deduplicated using SHA-256 hash of `(title + url)` stored in `content_hash` column.
+
+## Celery Tasks
+
+### Scheduled Tasks (via Celery Beat)
+- `collect_news_for_all_companies`: Runs every 5 minutes
+  - Fetches news from last 24 hours per company
+  - Deduplicates before insertion  
+  - Rate-limited to avoid API throttling
+
+- `cleanup_old_articles`: Runs daily at 3 AM
+  - Deletes articles older than 90 days
+  - Retries on failure (max 3 attempts)
+
+### Manual Tasks
+- `collect_news_on_startup`: One-time initial collection
+
+## News Collection Flow
+
+1. Celery Beat triggers `collect_news_for_all_companies` every 5 minutes
+2. Task fetches news from Finnhub API for each active company  
+3. Articles are deduplicated by hash before insertion
+4. Only last 24 hours of news (to avoid rate limits)
+5. Old articles (90+ days) are automatically cleaned up daily
+
+## Tests
+
 ```bash
-export TELEGRAM_BOT_TOKEN="your_bot_token_here"
-export TELEGRAM_CHAT_ID="your_telegram_chat_id_here"  # Optional
+# Run all tests
+pytest -v --cov=app
+
+# Run specific test suite
+pytest tests/unit/ -v           # Unit tests
+pytest tests/integration/ -v    # Integration tests
+pytest tests/e2e/ -v           # End-to-end tests
 ```
 
-3. Run the bot:
+### Test Coverage
+
+- **Unit Tests**: Model validation, hash computation
+- **Integration Tests**: API endpoints, database operations
+- **E2E Tests**: Full workflows with seeded data
+
+## Configuration
+
+### Database
+- PostgreSQL 15 with asyncpg driver
+- Connection pooling configured
+- Alembic migrations for schema management
+
+### Celery  
+- Redis as message broker
+- JSON serialization
+- Two queues: `news_collection`, `maintenance`
+- Rate limiting: 1 task per minute
+
+### API
+- FastAPI with automatic OpenAPI docs
+- CORS enabled for all origins
+- Async database sessions per request
+
+## Development
+
+### Adding New News Source
+
+1. Create collector in `app/collectors/`
+2. Implement `get_company_news()` method
+3. Update Celery task to use new collector
+4. Add API key to `.env`
+
+### Database Migrations
+
 ```bash
-python src/telegram_controller.py
+# Create new migration
+alembic revision --autogenerate -m "description"
+
+# Apply migration
+alembic upgrade head
 ```
 
-## Project Management
+## Troubleshooting
 
-Projects are stored in `~/projects/` directory:
+### Database Connection Errors
+- Verify PostgreSQL is running in Docker
+- Check `.env` database credentials
+- Run `docker compose logs db` for logs
 
-- `/project` lists all git repositories in `~/projects/`
-- Switching between projects preserves the current session
-- Cloning a new project creates a new session
-- Use `/reset` to manually create a new session
+### Celery Worker Not Starting  
+- Verify Redis is running: `docker compose logs redis`
+- Check `celery_broker_url` in `.env`
+- Ensure Celery worker queue names match config
 
-## Implementation Details
-
-The bot uses JSON formatting for all OpenCode commands (`--format json`):
-
-- **Command Structure**: `opencode run "message" --dir=/path --model=... --format=json`
-- **Action Messages**: Extracted from `tool_use` events with file/path details
-- **Real-time Streaming**: Every tool execution is shown immediately (no deduplication)
-- **Step Progress**: Shows `🔄 Step N/..` for multi-step operations
-- **Session Auto-Detection**: `/current_session` and `/compact` find latest session automatically
-- **Session Extraction**: Automatic from `sessionID` events in opencode output
-- **Error Handling**: Real-time error notifications from `error` events
-- **Truncation**: Long values truncated to 100 chars + `...`, inputs >500 chars sent separately
-- **MarkdownV2 Formatting**: All messages properly escaped for Telegram MarkdownV2
-- **Project Context**: Messages are sent with `--dir` parameter to execute in correct project
-- **Logging**: DEBUG level to terminal with timestamps
-
-**Message Flow**:
-```
-[Command: "fix the bug"]
-  ↓
-🔄 Typing indicator
-  ↓
-📖 Reading: src/file.py
-✏️ Modifying: README.md  (real-time actions)
-🔄 Step 3/5              (progress tracking)
-  ↓
-⚠️ Error: optional error
-  ↓
-📊 Summary (activity stats)
-📋 Full Details (if available)
-  ↓
-✅ Completed (typing stops)
-```
-[Command start]
-  ↓
-🔄 Typing indicator
-  ↓
-📖 Reading: src/file.py
-📖 Reading: src/another.py    (every action shown)
-✏️ Modifying: README.md       (no deduplication)
-  ↓
-⚠️ Error: optional error
-  ↓
-📊 Summary (activity stats)
-📋 Full Details (if available)
-  ↓
-✅ Completed (typing stops)
-```
-[Command start]
-  ↓
-🔄 Typing indicator
-  ↓
-📖 Reading: src/file.py
-✏️ Modifying: README.md  (real-time actions)
-  ↓
-⚠️ Error: optional error
-  ↓
-📊 Summary (activity stats)
-📋 Full Details (if available)
-  ↓
-✅ Completed (typing stops)
-```
-
-## Folder Structure
-
-```
-opencode-telegram-bot/
-├── src/
-│   └── telegram_controller.py     # Main bot implementation
-├── test/
-│   └── test_telegram_controller.py # Unit tests
-├── main.py                        # Entry point script
-├── requirements.txt               # Python dependencies
-├── README.md                      # This documentation
-└── AGENTS.md                      # Implementation specification
-```
+### API Rate Limits
+- Finnhub free tier: 60 calls/minute
+- Task is rate-limited to avoid exceeding limits
+- Increase delay in `tasks.py` if needed
 
 ## License
 
-Apache License 2.0
+MIT License

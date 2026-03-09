@@ -5,7 +5,7 @@ Main entry point for OpenCode Telegram Controller
 
 import sys
 import os
-from src.telegram_controller import bot, logger, TELEGRAM_BOT_TOKEN, send_startup_message
+from src.opencode_bot.telegram_controller import bot, logger, TELEGRAM_BOT_TOKEN, send_startup_message
 
 def main():
     """Main entry point."""

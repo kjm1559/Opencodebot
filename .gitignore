@@ -74,3 +74,6 @@ src/__pycache__/
 workspace/
 ~/projects/
 
+# Environment variables
+.env
+

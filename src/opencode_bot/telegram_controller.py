@@ -230,70 +230,54 @@ def format_summary_message(summary: dict, detail_text: str = "") -> tuple:
 def process_output_line(line: str, chat_id: str) -> str:
     """Process a single line of opencode output and format it for Telegram."""
     try:
-        # Check if line is JSON
         if not line:
             return ""
         obj = json.loads(line)
         
         # Filter out step_start and step_finish messages completely
         if obj.get("type") == "step_start" or obj.get("type") == "step_finish":
-            return ""  # Don't send these messages
+            return ""
         
-        if obj.get("type") == "text":
-            # Extract text content
+        msg_type = obj.get("type")
+        
+        if msg_type == "text":
             text_content = obj.get("text", "")
-            # Try to get text from part.text if it exists
             part = obj.get("part", {})
             if part:
                 text_content = part.get("text", text_content)
-            return text_content
+            return text_content.strip() or ""
             
-        elif obj.get("type") == "tool_use":
-            # Extract tool name and inputs/outputs with proper status handling
+        elif msg_type == "tool_use":
             tool_name = "Unknown tool"
             inputs = {}
-            outputs = {}
             status = ""
             
-            # Try to extract from part object first (common in opencode)
             part = obj.get("part", {})
             if part:
                 tool_name = part.get("tool", "Unknown tool")
-                # Handle state dictionary for status and input
                 state = part.get("state", {})
                 status = state.get("status", "")
                 inputs = state.get("input", {})
-                outputs = state.get("output", {})
             else:
-                # Fall back to direct fields if no part object
                 tool_name = obj.get("tool_name", obj.get("tool", "Unknown tool"))
                 inputs = obj.get("input", {})
-                outputs = obj.get("output", {})
             
-            # Format tool usage information with status in markdown code block - showing only input
-            result = f"[{tool_name}]:\n"
+            result = f"[{tool_name}]:"
             if status:
-                result += f"Status: {status}\n"
-            # Add markdown escaping for the input data to prevent formatting issues
-            input_json = json.dumps(inputs, indent=2)
-            result += f"```\n"
-            result += f"{input_json}\n"
-            result += f"```\n"
+                result += f"\n  Status: {status}"
+            if inputs:
+                result += f"\n  Input: {json.dumps(inputs, indent=2)}"
             return result.strip()
+        
         else:
-            # For unknown types, send raw message
-            return json.dumps(obj, indent=2)
+            return f"[{msg_type}]: {json.dumps(obj, indent=2)}"
             
     except json.JSONDecodeError as e:
-        # If line is not valid JSON, treat it as raw text
-        # Also handle the specific "Extra data" error which can happen when JSON parsing is attempted on partial data
         if "Extra data" in str(e):
-            logger.warning(f"Skipping line due to extra data in JSON: {line[:50]}.")
+            logger.warning(f"Skipping extra data in JSON: {line[:50]}")
             return ""
-        # If it's not an "Extra data" error, we still want to be careful about parsing
-        # This error likely occurs when there's malformed JSON, or multiple JSON objects on one line
-        logger.debug(f"JSON parse error: {e}; raw line: {line}")
-        return line.strip()
+        logger.debug(f"JSON parse error: {e}")
+        return line.strip() or ""
 
 def format_message(obj: dict) -> str:
     """Format a message object for Telegram."""
@@ -515,67 +499,59 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                     obj = json.loads(line)
                     msg_type = obj.get("type", "")
                     
-                    # Tool finished - send action summary with file/path info
+                    # Tool finished - send detailed action info
                     if msg_type == "tool_use":
                         part = obj.get("part", {})
                         tool = part.get("tool", "")
                         state = part.get("state", {})
                         status = state.get("status", "")
                         
-                        # Debug log to understand structure
                         logger.debug(f"Tool: {tool}, Status: {status}")
-                        logger.debug(f"Part: {part}")
                         
                         result = get_action_message(tool, status, part)
-                        # Send action for completed/started/success status
+                        # Send tool action for completed/started/success
                         if result and status in ("completed", "started", "success"):
                             action_msg, full_detail = result
                             
-                            # Send typing before each message
                             bot.send_chat_action(chat_id, 'typing')
-                            
-                            # Send action message
                             escaped_msg = escape_markdown_v2(action_msg)
                             
                             try:
                                 bot.send_message(chat_id, escaped_msg, parse_mode="MarkdownV2")
-                                logger.info(f"Sending action: {action_msg}")
-                                
-                                # Send full detail separately if very long
-                                if full_detail and len(full_detail) > 500:
-                                    detail_preview = full_detail[:200] + "..."
-                                    detail_msg = f"📋 Input:\n```{detail_preview}```"
-                                    bot.send_chat_action(chat_id, 'typing')
-                                    bot.send_message(chat_id, escape_markdown_v2(detail_msg), parse_mode="MarkdownV2")
+                                logger.info(f"✅ {tool}: {status}")
                             except Exception as e:
-                                logger.warning(f"Failed to send action: {e}")
+                                logger.error(f"Failed to send tool action: {e}")
                     
-                    # Step progress - show which step is running
-                    elif msg_type == "step_progress":
-                        step = obj.get("step", -1)
-                        if step > 0:
-                            msg = f"🔄 Step {step}/..."
-                            if msg != last_action:
-                                last_action = msg
-                                try:
-                                    bot.send_chat_action(chat_id, 'typing')
-                                    bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
-                                except Exception:
-                                    pass
+                    # Text output - send to Telegram
+                    elif msg_type == "text":
+                        text_content = obj.get("text", "")
+                        part = obj.get("part", {})
+                        if part:
+                            text_content = part.get("text", text_content)
+                        
+                        if text_content.strip():
+                            # Truncate very long text
+                            display_text = text_content.strip()[:300] + "..." if len(text_content.strip()) > 300 else text_content.strip()
+                            bot.send_chat_action(chat_id, 'typing')
+                            try:
+                                bot.send_message(chat_id, escape_markdown_v2(display_text), parse_mode="MarkdownV2")
+                                logger.info(f"📝 Text output sent ({len(text_content)} chars)")
+                            except Exception as e:
+                                logger.warning(f"Failed to send text output: {e}")
                     
-                    # Session started
+                    # Session started - show session ID
                     elif msg_type == "session_started":
                         session_id = obj.get("session_id", "")
                         if session_id:
-                            logger.info(f"Detected session_started event: {session_id}")
                             msg = f"📝 Session: {session_id[:12]}..."
                             if msg not in sent_messages:
                                 sent_messages.add(msg)
+                                bot.send_chat_action(chat_id, 'typing')
                                 try:
-                                    bot.send_chat_action(chat_id, 'typing')
                                     bot.send_message(chat_id, escape_markdown_v2(msg), parse_mode="MarkdownV2")
+                                    logger.info(f"🚀 Session started: {session_id}")
                                 except Exception as e:
-                                    logger.warning(f"Failed to send session: {e}")
+                                    logger.warning(f"Failed to send session start: {e}")
                     
                     # Step finished with summary - indicate completion
                     elif msg_type == "step_finish":
