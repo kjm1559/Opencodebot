@@ -1147,7 +1147,8 @@ def handle_compact_command(message):
         else:
             escaped_message = escape_markdown_v2(f"⚠️ Export completed with warnings: {session_id[:12]}...")
         
-        escaped_message += "\n\n📚 Usage:\n- `/compact` → export current/auto-detected session\n- `/compact <session_id>` → export specific session"
+        usage_text = "📚 Usage:\n- /compact → export current/auto-detected session\n- /compact <session_id> → export specific session"
+        escaped_message += "\n\n" + escape_markdown_v2(usage_text)
         
         bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         
