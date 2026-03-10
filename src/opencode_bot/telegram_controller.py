@@ -11,14 +11,52 @@ import subprocess
 import sys
 from typing import List, Dict, Any, Optional
 import logging
+from logging.handlers import RotatingFileHandler
+import pathlib
 
-# Set up logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
+# Round-robin log rotation config
+LOG_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_ROTATION_DIR = os.path.join(LOG_DIR, "logs")
+os.makedirs(LOG_ROTATION_DIR, exist_ok=True)
+LOG_FILE_COUNT = 10
+LOG_MAX_BYTES = 10 * 1024 * 1024
+LOG_ROTATION_INDEX_FILE = os.path.join(LOG_ROTATION_DIR, ".rotation_index")
+
+def get_next_log_file():
+    current_index = 0
+    try:
+        with open(LOG_ROTATION_INDEX_FILE, 'r') as f:
+            content = f.read().strip()
+            if content:
+                current_index = int(content)
+    except (FileNotFoundError, ValueError): pass
+    current_index = (current_index + 1) % LOG_FILE_COUNT
+    with open(LOG_ROTATION_INDEX_FILE, 'w') as f:
+        f.write(str(current_index))
+    return os.path.join(LOG_ROTATION_DIR, f'app_{current_index}.log')
+
+def rotate_if_needed():
+    pass
+
+def setup_logging():
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    logger.handlers.clear()
+    
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S'))
+    logger.addHandler(console_handler)
+    
+    file_handler = RotatingFileHandler(get_next_log_file(), maxBytes=0, backupCount=0)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S'))
+    logger.addHandler(file_handler)
+    
+    rotate_if_needed()
+    return logger
+
+logger = setup_logging()
 
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
