@@ -441,29 +441,27 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
         if input_data.get(key):
             value = input_data[key]
             break
-            
-            # Prepare short message (truncated)
-            if value and isinstance(value, str):
-                short_msg = value[:100] + "..." if len(value) > 100 else value
-                return f"{action}: {short_msg}", value
-            elif input_data:
-                # No specific param name, but have input - extract simplest meaningful value
-                import json
-                # Try to get a simple string from input data
-                if isinstance(input_data, dict):
-                    # Find first simple string value
-                    for v in input_data.values():
-                        if isinstance(v, str) and len(v) < 500:
-                            short_msg = v[:100] + "..." if len(v) > 100 else v
-                            return f"{action}: {short_msg}", v
-                
-                # Fall back to JSON if no simple value found
-                json_str = json.dumps(input_data, indent=2)
-                short_msg = json_str[:100] + "..." if len(json_str) > 100 else json_str
-                return f"{action}:\n```{short_msg}```", json_str
-            
-            return f"{action}", None
-    return None
+    
+    # Prepare short message (truncated)
+    if value and isinstance(value, str):
+        short_msg = value[:100] + "..." if len(value) > 100 else value
+        return f"{matched_action}: {short_msg}", value
+    elif input_data:
+        # No specific param name, but have input - extract simplest meaningful value
+        # Try to get a simple string from input data
+        if isinstance(input_data, dict):
+            # Find first simple string value
+            for v in input_data.values():
+                if isinstance(v, str) and len(v) < 500:
+                    short_msg = v[:100] + "..." if len(v) > 100 else v
+                    return f"{matched_action}: {short_msg}", v
+        
+        # Fall back to JSON if no simple value found
+        json_str = json.dumps(input_data, indent=2)
+        short_msg = json_str[:100] + "..." if len(json_str) > 100 else json_str
+        return f"{matched_action}:\n```{short_msg}```", json_str
+    
+    return f"{matched_action}", None
 
 def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
     """Stream opencode command output to terminal, send only summary to Telegram."""
