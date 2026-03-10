@@ -2,23 +2,23 @@
 
 ## Purpose
 
-Rules and workflows governing AI agent behavior when developing the Telegram Controller for OpenCode.
+Rules and workflows for AI agent behavior when developing the Telegram Controller.
 
 ---
 
-## Core Principles
+## Mandatory Workflow
 
-**MANDATORY WORKFLOW** - All modifications must follow this sequence:
+**ALL modifications must follow this sequence:**
 
-1. **ANALYZE** → Understand requirements, locate relevant code, identify patterns
-2. **PLAN** → Create detailed todo list, outline implementation steps
+1. **ANALYZE** → Understand requirements, locate code, identify patterns
+2. **PLAN** → Create detailed todo list
 3. **IMPLEMENT** → Make changes, one logical unit at a time
-4. **TEST** → Create/update test cases, run full test suite
-5. **DOCUMENT** → Update README.md if behavior/features changed
+4. **TEST** → Create/update test cases, run full suite
+5. **DOCUMENT** → Update README.md if features changed
 6. **COMMIT** → Atomic commits with meaningful messages
 7. **PUSH** → Push to remote repository
 
-**DEVIATION FROM THIS FLOW = INCOMPLETE WORK**
+**DEVIATION = INCOMPLETE WORK**
 
 ---
 
@@ -26,40 +26,37 @@ Rules and workflows governing AI agent behavior when developing the Telegram Con
 
 ### Mandatory Test Creation
 
-**ALL code changes MUST include corresponding test cases:**
+**ALL code changes MUST include test cases:**
 
-1. **Location**: `tests/` folder hierarchy
-2. **Coverage**: Every logical path, edge case, and error condition
-3. **Types**:
-   - **Unit tests**: Individual functions/components
-   - **Integration tests**: Multi-component interactions
-   - **E2E tests**: Full workflow validation
+- **Location**: `tests/` folder
+- **Coverage**: Every logical path, edge case, error condition
+- **Types**: Unit tests, Integration tests, E2E tests
 
 ### Test Execution Protocol
 
-Before marking ANY implementation as complete:
+**Before marking implementation complete:**
 
-```
-1. Run full test suite: `pytest tests/ -v`
-2. Verify ALL tests pass (exit code 0)
-3. Check coverage: `pytest --cov=src --cov-report=term-missing`
-4. Ensure NO regression in existing tests
+```bash
+# Run full test suite
+pytest tests/ -v
+
+# Check coverage
+pytest --cov=src --cov-report=term-missing
 ```
 
-**Evidence of completion MUST include**:
-- ✅ Test output logs showing 100% pass rate
+**Completion requirements:**
+- ✅ All tests pass (exit code 0)
 - ✅ No pre-existing tests broken
-- ✅ New test files created for new functionality
-- ✅ Edge cases covered (error handling, empty inputs, invalid data)
+- ✅ New test files for new functionality
+- ✅ Edge cases covered (errors, empty inputs, invalid data)
 
 ### Test Quality Standards
 
-**Every test case must**:
-- Have descriptive name matching tested behavior
+**Every test must:**
+- Have descriptive name matching behavior
 - Use `pytest` fixtures for setup/teardown
 - Test failure conditions, not just happy paths
 - Be deterministic (no flaky tests)
-- Include assertions that verify actual behavior
 
 ---
 
@@ -67,36 +64,26 @@ Before marking ANY implementation as complete:
 
 ### README.md Update Protocol
 
-**Any feature modification or addition REQUIRES README.md update:**
+**Any feature modification REQUIRES README.md update:**
 
-1. **When to update**:
-   - New command added
-   - Command behavior changed
-   - Usage patterns modified
-   - Configuration options added/removed
-   - Message flow changed
+**When to update:**
+- New command added
+- Command behavior changed
+- Usage patterns modified
+- Configuration options added/removed
 
-2. **What to update**:
-   - Command reference section
-   - Examples (must be current and testable)
-   - Message flow diagrams
-   - Feature list
-   - Usage instructions
-
-3. **Verification**:
-   - README.md examples MUST match actual code behavior
-   - All commands listed must be documented
-   - Screenshots/diagrams updated if visual flow changed
+**What to update:**
+- Command reference section
+- Examples (current and testable)
+- Message flow diagrams
+- Feature list
+- Usage instructions
 
 ### Commit Message Standards
 
 **Format:**
 ```
 <type>: <short description>
-
-<optional: detailed explanation>
-- Bullet points for changes
-- Impact summary
 ```
 
 **Types:**
@@ -107,71 +94,37 @@ Before marking ANY implementation as complete:
 - `refactor:` Code restructuring
 - `chore:` Maintenance tasks
 
-**MANDATORY ELEMENTS:**
-- Short summary (50 chars or less)
-- Imperative tense ("Add feature" not "Added feature")
-- Reference issue number if applicable
+**Requirements:**
+- Short summary (≤50 chars)
+- Imperative tense ("Add" not "Added")
 
 ---
 
-## General Development Rules
+## Development Rules
 
 ### Code Quality
 
-1. **Type Safety**:
-   - NEVER use `as any`, `@ts-ignore`, type suppression
-   - All functions must have proper type hints
-   - Never suppress type errors without commented justification
-
-2. **Error Handling**:
-   - All `try/except` blocks must log errors with context
-   - User-facing error messages must be in Telegram-friendly format
-   - Never use empty `except:` or `pass` in catch blocks
-
-3. **Code Patterns**:
-   - Follow existing codebase style (consistent indentation, naming)
-   - Functions should be single-purpose (< 50 lines ideally)
-   - Extract repeated logic into helper functions
+1. **Type Safety**: No `as any`, `@ts-ignore`, or type suppression
+2. **Error Handling**: All `try/except` blocks must log with context
+3. **Code Patterns**: Single-purpose functions (<50 lines), follow existing style
 
 ### Git Workflow
 
-1. **Atomic Commits**:
-   - One logical change per commit
-   - All related tests included in same commit
-   - README.md updates in same commit as feature
-
-2. **Push Protocol**:
-   - ALWAYS verify changes before pushing
-   - Check commit message clarity
-   - Ensure remote branch is up-to-date first
-
-3. **Branch Safety**:
-   - NEVER force push to `main` without explicit request
-   - NEVER amend already pushed commits
-   - Keep `main` branch in working state always
+1. **Atomic Commits**: One logical change per commit, include tests
+2. **Push Protocol**: Verify changes first, keep remote updated
+3. **Branch Safety**: Never force push to `main`
 
 ### Telegram-Specific Rules
 
-1. **MarkdownV2 Safety**:
-   - ALL user-facing text MUST be escaped with `escape_markdown_v2()`
-   - Special characters that require escaping: `_ * [ ] ( ) ~ ` > # + - = | { } . !`
-   - Test messages before production deployment
-
-2. **Error Recovery**:
-   - Failed messages should include fallback options
-   - Graceful degradation (bot stays responsive after errors)
-   - Rate limit awareness (Telegram API limits)
-
-3. **User Experience**:
-   - Typing indicator for long operations
-   - Progress updates for multi-step actions
-   - Clear error messages in user's language
+1. **MarkdownV2 Safety**: ALL user-facing text MUST be escaped with `escape_markdown_v2()`
+2. **Error Recovery**: Graceful degradation, rate limit awareness
+3. **User Experience**: Typing indicator for long operations
 
 ---
 
 ## Verification Checklist
 
-**Before marking ANY task COMPLETE**:
+**Before marking task COMPLETE:**
 
 - [ ] Code implements requested feature
 - [ ] Test cases created in `tests/`
@@ -187,24 +140,25 @@ Before marking ANY implementation as complete:
 
 ---
 
-## Project Context (Reference)
+## Project Context
 
-### Telegram Controller Overview
-
+### Overview
 Telegram bot controlling `opencode` via CLI commands with real-time updates and session management.
 
 ### Core Features
 
 **Real-Time Updates**:
-- Typing Indicator during command execution
-- Action Streams (📖 Reading, ✏️ Modifying, 💻 Running, 🌐 Fetching, 🔍 Searching)
-- Session Tracking (automatic session ID extraction)
-- Error Notifications
+- Typing indicator during execution
+- Action streams (Reading, Modifying, Running, Fetching, Searching)
+- Session tracking and error notifications
 
 **Session Management**:
-- List/Set/Create/Export sessions
-- Reset sessions
+- List/Set/Create/Export/Reset sessions
 
 **Commands**:
 - `/session`, `/set_session`, `/current_session`, `/new_session`
 - `/compact`, `/reset`, `/project`, `/workspace`, `/model`
+
+**Logging**:
+- Console: INFO+ only
+- Files: DEBUG+ with round-robin rotation (10 files × 10MB)
