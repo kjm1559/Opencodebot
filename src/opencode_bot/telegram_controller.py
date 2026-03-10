@@ -1117,35 +1117,43 @@ def handle_compact_command(message):
     logger.info(f"Received /compact command from chat {chat_id}")
     
     try:
-        # First check in-memory store
-        session_id = get_current_session_id(chat_id)
+        args = message.text.split()[1:] if len(message.text.split()) > 1 else []
+        provided_session_id = args[0] if args else None
         
-        # If not found or empty, get latest from opencode
-        if not session_id:
-            result = run_opencode_command(["session", "list", "--format", "json"])
-            sessions_data = json.loads(result.stdout)
-            if sessions_data:
-                # Sort by updated timestamp (most recent first)
-                latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
-                session_id = latest_session['id']
-                set_current_session_id(chat_id, session_id)  # Cache it
-                logger.info(f"Auto-detected latest session for compact: {session_id}")
-            else:
-                escaped_message = escape_markdown_v2("No sessions available to compact.")
-                bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
-                return
+        if provided_session_id:
+            session_id = provided_session_id
+            logger.info(f"Using provided session ID: {session_id}")
+        else:
+            session_id = get_current_session_id(chat_id)
             
-        compact_args = ["export", session_id]
-        result = run_opencode_command(compact_args)
+            if not session_id:
+                result = run_opencode_command(["session", "list", "--format", "json"])
+                sessions_data = json.loads(result.stdout)
+                if sessions_data:
+                    latest_session = max(sessions_data, key=lambda x: x.get('updated', x.get('created', 0)))
+                    session_id = latest_session['id']
+                    set_current_session_id(chat_id, session_id)
+                    logger.info(f"Auto-detected latest session: {session_id}")
+                else:
+                    escaped_message = escape_markdown_v2("❌ No sessions available to export.")
+                    bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+                    return
+        
+        export_args = ["export", session_id]
+        result = run_opencode_command(export_args)
         
         if result.returncode == 0:
-            escaped_message = escape_markdown_v2(f"✅ Session exported successfully: {session_id[:12]}...\n\nSession data backed up locally.")
+            escaped_message = escape_markdown_v2(f"✅ Session exported: {session_id[:12]}...\n\n📦 Session data backed up locally.")
         else:
-            escaped_message = escape_markdown_v2(f"⚠️ Session export completed with warnings: {session_id[:12]}...")
+            escaped_message = escape_markdown_v2(f"⚠️ Export completed with warnings: {session_id[:12]}...")
+        
+        escaped_message += "\n\n📚 Usage:\n- `/compact` → export current/auto-detected session\n- `/compact <session_id>` → export specific session"
+        
+        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         
     except Exception as e:
         logger.error(f"Error handling /compact command: {e}")
-        escaped_error = escape_markdown_v2(f"Error compacting session: {str(e)}")
+        escaped_error = escape_markdown_v2(f"❌ Error exporting session: {str(e)}")
         bot.reply_to(message, escaped_error, parse_mode="MarkdownV2")
 
 @bot.message_handler(commands=['reset'])
