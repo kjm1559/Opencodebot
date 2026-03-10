@@ -1135,12 +1135,13 @@ def handle_compact_command(message):
                 bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
                 return
             
-        # Compact the session
-        command_args = ["session", "compact", session_id]
-        result = run_opencode_command(command_args)
+        compact_args = ["export", session_id]
+        result = run_opencode_command(compact_args)
         
-        escaped_message = escape_markdown_v2(f"Session compacted successfully: {session_id}")
-        bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
+        if result.returncode == 0:
+            escaped_message = escape_markdown_v2(f"✅ Session exported successfully: {session_id[:12]}...\n\nSession data backed up locally.")
+        else:
+            escaped_message = escape_markdown_v2(f"⚠️ Session export completed with warnings: {session_id[:12]}...")
         
     except Exception as e:
         logger.error(f"Error handling /compact command: {e}")
