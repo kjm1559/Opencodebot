@@ -44,12 +44,7 @@ Two usage modes:
 /compact <session_id> → Export specific session by ID
 ```
 
-Example:
 ```
-/compact ses_3371a7af2ffe0ncZGUfrsaVMeJ
-```
-
-### Quick Start
 
 ## Quick Start
 
@@ -95,7 +90,33 @@ python src/opencode_bot/telegram_controller.py
 - **Truncation**: Long values truncated to 150 chars with "..."
 - **Deduplication**: Duplicate action messages suppressed
 - **Error Handling**: Graceful error recovery for Telegram messages
-- **Logging**: DEBUG level logging to terminal (with timestamps)
+
+## Logging System
+
+### Console Output (INFO only)
+Terminal shows only INFO level and above:
+- `INFO`, `WARNING`, `ERROR` visible
+- `DEBUG` messages filtered out
+- Format: `YYYY-MM-DD HH:MM:SS - LEVEL - message`
+
+### File Logs (DEBUG+)
+All debug information saved to rotating log files:
+- **Location**: `src/opencode_bot/logs/`
+- **Rotation**: Round-robin across 10 files (`app_0.log` ~ `app_9.log`)
+- **Size Limit**: 10MB per file (auto-rotates when exceeded)
+- **Format**: `YYYY-MM-DD HH:MM:SS - telegram_controller - LEVEL - message`
+- **Index Tracking**: `.rotation_index` tracks current file
+
+### Log File Management
+```
+src/opencode_bot/logs/
+├── app_0.log         # Log file 0
+├── app_1.log         # Log file 1
+├── ...               # ...
+├── app_9.log         # Log file 9
+└── .rotation_index   # Current rotation index (0-9)
+```
+When `app_n.log` exceeds 10MB, contents move to `app_(n+1).log`.
 
 ## Session Auto-Extraction
 
