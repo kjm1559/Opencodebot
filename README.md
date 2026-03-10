@@ -1,209 +1,105 @@
-# Stock News API
+# Telegram Controller for OpenCode
 
-A FastAPI-based stock news aggregation system that collects news from multiple sources (Finnhub, AlphaVantage, GNews) with scheduled data collection via Celery.
+Telegram bot controlling `opencode` via CLI commands with real-time updates and session management.
 
 ## Features
 
-- **Multi-source news aggregation**: Finnhub (primary), AlphaVantage, GNews (stubs)
-- **Scheduled collection**: Runs every 5 minutes via Celery Beat
-- **Deduplication**: SHA-256 hash-based article deduplication
-- **Async database**: PostgreSQL with async SQLAlchemy 2.0
-- **RESTful API**: FastAPI endpoints for news retrieval
-- **Containerized**: Docker Compose for PostgreSQL and Redis
+### Real-Time Updates
+- **Typing Indicator**: Shows typing status during command execution
+- **Action Streams**: Real-time tool usage notifications with file/path details
+  - 📖 Reading: src/telegram_controller.py
+  - ✏️ Modifying: README.md
+  - 💻 Running: git status
+  - 🌐 Fetching: https://example.com
+  - 🔍 Searching: **/*.py
+- **Session Tracking**: Automatic session ID extraction and display
+- **Error Notifications**: Immediate error alerts during execution
+
+### Session Management
+- List available sessions
+- Set/create current session
+- Export sessions (backup)
+- Reset sessions
+
+### Output Streaming
+- Minimal real-time updates (action messages only)
+- Comprehensive summary at completion
+- Full details in chunks (if available)
+
+## Commands
+
+- `/session` - List available sessions
+- `/set_session <id>` - Set current session
+- `/current_session` - Show current session
+- `/new_session` - Create new session
+- `/compact <session_id>` - Export session (backup)
+- `/reset` - Clear current session
+
+### /compact Command
+
+Two usage modes:
+
+```
+/compact              → Export current/auto-detected session
+/compact <session_id> → Export specific session by ID
+```
+
+Example:
+```
+/compact ses_3371a7af2ffe0ncZGUfrsaVMeJ
+```
+
+### Quick Start
 
 ## Quick Start
 
 ```bash
-# Start infrastructure
-docker compose up -d
-
-# Initialize database
-alembic upgrade head
-
-# Seed company data
-seed-db
-
-# Start API server
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Start Celery worker (separate terminal)
-celery -A app.celery worker -l info -Q news_collection,maintenance
-
-# Start Celery Beat (separate terminal)
-celery -A app.celery beat -l info
+# Start the Telegram bot
+python src/opencode_bot/telegram_controller.py
 ```
 
-## API Documentation
+## Telegram Commands
 
-- Swagger UI: http://localhost:8000/docs
-- Health check: http://localhost:8000/api/v1/health
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/session` | List all available sessions | `/session` |
+| `/current_session` | Show current session ID | `/current_session` |
+| `/set_session <id>` | Set specific session | `/set_session ses_abc123` |
+| `/new_session` | Create new session | `/new_session` |
+| `/compact <session_id>` | Export session data | `/compact ses_abc123` |
+| `/reset` | Clear current session | `/reset` |
 
-## Environment Setup
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and add your API keys:
-```
-# Required
-FINNHUB_API_KEY=your_finnhub_key_here
-
-# Optional
-ALPHAVANTAGE_API_KEY=
-GNEWS_API_KEY=
-```
-
-## API Endpoints
-
-### Articles
-- `GET /api/v1/articles` - List articles with pagination and filters
-  - Query params: `page`, `page_size`, `ticker`, `source`
-- `GET /api/v1/articles/{id}` - Get single article by ID
-- `POST /api/v1/news/collect` - Manually trigger news collection
-
-### Companies  
-- `GET /api/v1/companies` - List all companies with article counts
-
-### Health
-- `GET /api/v1/health` - Health check endpoint
-
-## Project Structure
+## Message Flow
 
 ```
-stock_info/
-├── app/
-│   ├── api/           # FastAPI routes
-│   │   ├── routes.py  # Endpoints
-│   │   └── schemas.py # Pydantic models
-│   ├── collectors/    # News API collectors
-│   │   ├── finnhub.py # Finnhub collector
-│   │   ├── alphavantage.py  # AlphaVantage stub
-│   │   └── gnews.py   # GNews stub
-│   ├── celery.py      # Celery configuration
-│   ├── config.py      # Settings
-│   ├── database.py    # Async DB session
-│   ├── main.py        # FastAPI app
-│   ├── models.py      # SQLAlchemy models
-│   └── tasks.py       # Celery tasks
-├── alembic/           # Database migrations
-├── scripts/           # Utility scripts
-│   └── seed_companies.py
-├── tests/             # Pytest test suite
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
-├── docker-compose.yml
-├── pyproject.toml
-└── README.md
+[User command]
+  ↓
+🔄 Typing indicator started
+  ↓
+📖 Reading: src/file.py (real-time action)
+✏️ Modifying: README.md
+💻 Running: git status
+  ↓
+⚠️ Error: <optional error message>
+  ↓
+📊 Summary (with activity stats)
+📋 Full Details (chunked if long)
+  ↓
+✅ Completed (typing stops)
 ```
 
-## Database Schema
+## Implementation Details
 
-**Tables:**
-- `companies`: Stock ticker information (ticker, name, sector)
-- `articles`: News content with deduplication
-- `article_companies`: Many-to-many association
-- `article_signals`: Sentiment/relevance scores
+- **JSON Format**: All opencode commands use `--format json`
+- **Filtering**: Step start/finish messages filtered for cleaner output
+- **Truncation**: Long values truncated to 150 chars with "..."
+- **Deduplication**: Duplicate action messages suppressed
+- **Error Handling**: Graceful error recovery for Telegram messages
+- **Logging**: DEBUG level logging to terminal (with timestamps)
 
-**Deduplication:**
-Articles are deduplicated using SHA-256 hash of `(title + url)` stored in `content_hash` column.
+## Session Auto-Extraction
 
-## Celery Tasks
-
-### Scheduled Tasks (via Celery Beat)
-- `collect_news_for_all_companies`: Runs every 5 minutes
-  - Fetches news from last 24 hours per company
-  - Deduplicates before insertion  
-  - Rate-limited to avoid API throttling
-
-- `cleanup_old_articles`: Runs daily at 3 AM
-  - Deletes articles older than 90 days
-  - Retries on failure (max 3 attempts)
-
-### Manual Tasks
-- `collect_news_on_startup`: One-time initial collection
-
-## News Collection Flow
-
-1. Celery Beat triggers `collect_news_for_all_companies` every 5 minutes
-2. Task fetches news from Finnhub API for each active company  
-3. Articles are deduplicated by hash before insertion
-4. Only last 24 hours of news (to avoid rate limits)
-5. Old articles (90+ days) are automatically cleaned up daily
-
-## Tests
-
-```bash
-# Run all tests
-pytest -v --cov=app
-
-# Run specific test suite
-pytest tests/unit/ -v           # Unit tests
-pytest tests/integration/ -v    # Integration tests
-pytest tests/e2e/ -v           # End-to-end tests
-```
-
-### Test Coverage
-
-- **Unit Tests**: Model validation, hash computation
-- **Integration Tests**: API endpoints, database operations
-- **E2E Tests**: Full workflows with seeded data
-
-## Configuration
-
-### Database
-- PostgreSQL 15 with asyncpg driver
-- Connection pooling configured
-- Alembic migrations for schema management
-
-### Celery  
-- Redis as message broker
-- JSON serialization
-- Two queues: `news_collection`, `maintenance`
-- Rate limiting: 1 task per minute
-
-### API
-- FastAPI with automatic OpenAPI docs
-- CORS enabled for all origins
-- Async database sessions per request
-
-## Development
-
-### Adding New News Source
-
-1. Create collector in `app/collectors/`
-2. Implement `get_company_news()` method
-3. Update Celery task to use new collector
-4. Add API key to `.env`
-
-### Database Migrations
-
-```bash
-# Create new migration
-alembic revision --autogenerate -m "description"
-
-# Apply migration
-alembic upgrade head
-```
-
-## Troubleshooting
-
-### Database Connection Errors
-- Verify PostgreSQL is running in Docker
-- Check `.env` database credentials
-- Run `docker compose logs db` for logs
-
-### Celery Worker Not Starting  
-- Verify Redis is running: `docker compose logs redis`
-- Check `celery_broker_url` in `.env`
-- Ensure Celery worker queue names match config
-
-### API Rate Limits
-- Finnhub free tier: 60 calls/minute
-- Task is rate-limited to avoid exceeding limits
-- Increase delay in `tasks.py` if needed
-
-## License
-
-MIT License
+Session IDs are automatically extracted from opencode output:
+- `session_started` events captured
+- Current session stored per user
+- Available via `/current_session` command
