@@ -7,7 +7,7 @@ import sys
 import os
 import time
 import requests
-from src.opencode_bot.telegram_controller import bot, logger, TELEGRAM_BOT_TOKEN, send_startup_message
+from src.telegram_controller import bot, logger, TELEGRAM_BOT_TOKEN, send_startup_message
 
 POLLING_TIMEOUT = 30
 POLLING_RETRY_DELAY = 5
