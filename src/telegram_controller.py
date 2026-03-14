@@ -148,13 +148,9 @@ MAX_MESSAGE_LENGTH = 4096  # Telegram message limit
 MAX_PREVIEW_LENGTH = 2500  # Max characters for response preview
 
 def escape_only_dots(text: str) -> str:
-    """Escape special chars for Telegram MarkdownV2, skip ... pattern."""
-    # Protect ... before escaping
-    text = text.replace("...", "@@@")
-    result = text.replace("\\", "\\\\")
-    result = result.replace(".", r"\.").replace("-", r"\-").replace("(", r"\(").replace(")", r"\)").replace("_", r"\_").replace("#", r"\#").replace("!", r"\!").replace("=", r"\=").replace("+", r"\+")
-    # Restore ... unchanged
-    return result.replace("@@@", "...")
+    """Escape Telegram MDV2 special characters."""
+    result = escape_markdown_v2(text)
+    return result
 
 def collect_output_for_summary():
     """Initialize output collection."""
@@ -435,6 +431,8 @@ def get_available_models() -> List[str]:
 def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> Optional[tuple]:
     """Get action message and full input detail for the tool and status.
     Returns: (message_to_send, full_detail_for_button) or None
+    
+    For long content (>100 chars), uses Telegram spoiler ||tags|| for collapsible display.
     """
     if part is None:
         part = {}
@@ -482,24 +480,36 @@ def get_action_message(tool: str, status: str, part: Optional[dict] = None) -> O
             value = input_data[key]
             break
     
-    # Prepare short message (truncated)
+    # Prepare short message with collapsible spoiler for long content
     if value and isinstance(value, str):
-        short_msg = value[:100] + "..." if len(value) > 100 else value
-        return f"{matched_action}: {short_msg}", value
+        if len(value) > 150:
+            # Show preview with spoiler for full content
+            preview = value[:100] + " "
+            hidden = value[100:]
+            return f"{matched_action}: {preview}||{hidden}||", value
+        else:
+            return f"{matched_action}: {value}", value
     elif input_data:
         # No specific param name, but have input - extract simplest meaningful value
-        # Try to get a simple string from input data
         if isinstance(input_data, dict):
             # Find first simple string value
             for v in input_data.values():
                 if isinstance(v, str) and len(v) < 500:
-                    short_msg = v[:100] + "..." if len(v) > 100 else v
-                    return f"{matched_action}: {short_msg}", v
+                    if len(v) > 150:
+                        preview = v[:100] + " "
+                        hidden = v[100:]
+                        return f"{matched_action}: {preview}||{hidden}||", v
+                    else:
+                        return f"{matched_action}: {v}", v
         
         # Fall back to JSON if no simple value found
         json_str = json.dumps(input_data, indent=2)
-        short_msg = json_str[:100] + "..." if len(json_str) > 100 else json_str
-        return f"{matched_action}:\n```{short_msg}```", json_str
+        if len(json_str) > 150:
+            preview = json_str[:100]
+            hidden = json_str[100:]
+            return f"{matched_action}:\n```{preview}```\n||```{hidden}```||", json_str
+        else:
+            return f"{matched_action}:\n```{json_str}```", json_str
     
     return f"{matched_action}", None
 
@@ -568,8 +578,13 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
                             text_content = part.get("text", text_content)
                         
                         if text_content.strip():
-                            # Truncate very long text
-                            display_text = text_content.strip()[:300] + "..." if len(text_content.strip()) > 300 else text_content.strip()
+                            text = text_content.strip()
+                            if len(text) > 300:
+                                preview = text[:300]
+                                hidden = text[300:]
+                                display_text = f"{preview}\n||{hidden}||"
+                            else:
+                                display_text = text
                             bot.send_chat_action(chat_id, 'typing')
                             try:
                                 bot.send_message(chat_id, escape_markdown_v2(display_text), parse_mode="MarkdownV2")
