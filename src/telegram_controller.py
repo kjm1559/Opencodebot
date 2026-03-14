@@ -48,12 +48,19 @@ def setup_logging():
     console_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S'))
     logger.addHandler(console_handler)
     
-    file_handler = RotatingFileHandler(get_next_log_file(), maxBytes=0, backupCount=0)
+    file_handler = RotatingFileHandler(
+        get_next_log_file(),
+        maxBytes=LOG_FILE_SIZE,
+        backupCount=LOG_FILE_COUNT
+    )
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s', '%Y-%m-%d %H:%M:%S'))
+    file_handler.setFormatter(
+        logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            '%Y-%m-%d %H:%M:%S'
+        )
+    )
     logger.addHandler(file_handler)
-    
-    rotate_if_needed()
     return logger
 
 logger = setup_logging()
