@@ -166,19 +166,14 @@ def process_line_for_summary(collect_data: dict, line: str, chat_id: Optional[st
         
         msg_type = obj.get("type", "")
         
-        # Extract session ID from various locations
         if chat_id:
-            # Try root level sessionID (camelCase)
-            session_id = obj.get("sessionID")
-            if not session_id:
-                # Try root level session_id (snake_case)
-                session_id = obj.get("session_id")
+            session_id = obj.get("sessionID") or obj.get("session_id")
             if not session_id and "part" in obj:
-                # Try part.sessionID
                 part = obj.get("part", {})
                 session_id = part.get("sessionID") or part.get("session_id")
             
-            if session_id:
+            if session_id and session_id != collect_data.get("last_session_id"):
+                collect_data["last_session_id"] = session_id
                 set_current_session_id(chat_id, session_id)
                 logger.info(f"Extracted session_id: {session_id}")
     except json.JSONDecodeError:
