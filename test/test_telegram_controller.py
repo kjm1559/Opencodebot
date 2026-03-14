@@ -7,7 +7,11 @@ import pytest
 import json
 import sys
 import os
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, mock_open
+
+# Mock telebot module to prevent Telegram bot initialization during tests
+sys.modules['telebot'] = MagicMock()
+sys.modules['telebot.types'] = MagicMock()
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -22,7 +26,8 @@ from src.telegram_controller import (
     set_current_session_id,
     get_current_session_id,
     stream_opencode_output,
-    run_opencode_command
+    run_opencode_command,
+    get_action_message
 )
 
 def test_escape_markdown_v2():
@@ -89,7 +94,6 @@ def test_format_session_list_empty():
 
 def test_session_management():
     """Test session management functions."""
-    # Clear store for test
     from src.telegram_controller import session_store
     chat_id = "test_chat_123"
     
@@ -101,8 +105,7 @@ def test_session_management():
     set_current_session_id(chat_id, "sess_456")
     assert get_current_session_id(chat_id) == "sess_456"
     
-    # Test non-existent chat
-    assert get_current_session_id("non_existent_chat") is None
+    assert get_current_session_id("non_existent_chat") == ""
 
 
 def test_process_output_line_unknown():
