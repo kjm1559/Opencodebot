@@ -50,7 +50,7 @@ def setup_logging():
     
     file_handler = RotatingFileHandler(
         get_next_log_file(),
-        maxBytes=LOG_FILE_SIZE,
+        maxBytes=LOG_MAX_BYTES,
         backupCount=LOG_FILE_COUNT
     )
     file_handler.setLevel(logging.DEBUG)
