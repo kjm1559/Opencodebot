@@ -34,6 +34,7 @@ Telegram bot controlling `opencode` via CLI commands with real-time updates and 
 - `/new_session` - Create new session
 - `/compact <session_id>` - Export session (backup)
 - `/reset` - Clear current session
+- `/restart` - Restart bot with git pull (clears all sessions)
 
 ### /compact Command
 
@@ -63,6 +64,7 @@ python src/opencode_bot/telegram_controller.py
 | `/new_session` | Create new session | `/new_session` |
 | `/compact <session_id>` | Export session data | `/compact ses_abc123` |
 | `/reset` | Clear current session | `/reset` |
+| `/restart` | Restart bot (git pull + restart) | `/restart` |
 
 ## Message Flow
 

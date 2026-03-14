@@ -1394,6 +1394,31 @@ def handle_restart_command(message):
         session_store.clear()
         logger.info("Cleared all sessions")
         
+        try:
+            bot.reply_to(message, escape_markdown_v2("📥 Fetching latest updates via git pull..."), parse_mode="MarkdownV2")
+            git_result = subprocess.run(
+                ["git", "pull"],
+                cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+            
+            if git_result.returncode == 0:
+                logger.info("Git pull successful")
+                if git_result.stdout.strip():
+                    preview = git_result.stdout.split('\n')[0][:250]
+                    logger.info(f"Git output: {preview}")
+            else:
+                logger.warning(f"Git pull failed: {git_result.stderr}")
+                bot.reply_to(message, escape_markdown_v2(f"⚠️ Git pull completed with warnings: {git_result.stderr[:200]}"), parse_mode="MarkdownV2")
+        except subprocess.TimeoutExpired:
+            logger.error("Git pull timeout")
+            bot.reply_to(message, escape_markdown_v2("⚠️ Git pull timeout, continuing with restart..."), parse_mode="MarkdownV2")
+        except Exception as git_error:
+            logger.error(f"Git pull error: {git_error}")
+            bot.reply_to(message, escape_markdown_v2(f"⚠️ Git pull failed: {str(git_error)[:200]}"), parse_mode="MarkdownV2")
+        
         # Wait a moment then restart
         import time
         time.sleep(2)
