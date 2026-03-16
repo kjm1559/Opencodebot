@@ -1154,10 +1154,10 @@ def handle_new_session_command(message):
         if session_id:
             logger.info(f"Cleared current session: {session_id}")
         
-        # Clear session from store - next command will create a new session automatically
         set_current_session_id(chat_id, "")
+        session_store[chat_id]["force_new_session"] = True
         
-        escaped_message = escape_markdown_v2("✅ Session cleared.\n\n💡 Your next command will create a new session automatically.")
+        escaped_message = escape_markdown_v2("✅ Session cleared.\n\n💡 Your next command will create a brand new session (not reusing existing ones).")
         bot.reply_to(message, escaped_message, parse_mode="MarkdownV2")
         logger.info(f"Cleared session for chat {chat_id}")
                 
@@ -1474,11 +1474,13 @@ def handle_message(message):
     if current_model:
         base_args.extend(["--model", current_model])
     
-    # Check if we have an active session
     current_session_id = get_current_session_id(chat_id)
+    force_new_session = session_store.get(chat_id, {}).get("force_new_session", False)
     
-    if current_session_id:
-        # Use the existing session
+    if force_new_session:
+        session_store[chat_id]["force_new_session"] = False
+    
+    if current_session_id and not force_new_session:
         logger.info(f"Using existing session {current_session_id}")
         command_args = base_args + ["--session", current_session_id]
         stream_opencode_output(chat_id, command_args)
