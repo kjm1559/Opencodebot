@@ -1477,14 +1477,12 @@ def handle_message(message):
     current_session_id = get_current_session_id(chat_id)
     force_new_session = session_store.get(chat_id, {}).get("force_new_session", False)
     
-    if force_new_session:
-        session_store[chat_id]["force_new_session"] = False
-    
     if current_session_id and not force_new_session:
         logger.info(f"Using existing session {current_session_id}")
         command_args = base_args + ["--session", current_session_id]
         stream_opencode_output(chat_id, command_args)
     elif force_new_session:
+        session_store[chat_id]["force_new_session"] = False
         logger.info("Force new session requested, skipping existing sessions")
         command_args = base_args + ["--continue"]
         escaped_message = escape_markdown_v2("Creating new session...")
