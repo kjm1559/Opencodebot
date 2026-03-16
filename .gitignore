@@ -77,3 +77,9 @@ workspace/
 # Environment variables
 .env
 
+# Log files
+src/logs/*.log
+src/logs/.rotation_index
+logs/*.log
+logs/.rotation_index
+

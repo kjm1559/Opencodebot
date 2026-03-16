@@ -32,10 +32,11 @@ def cleanup_processes():
                 del active_process[chat_id]
     
     try:
-        bot.stop_polling()
-        logger.info("Stopped Telegram polling")
+        if bot:
+            bot.stop_polling()
+            logger.info("Stopped Telegram polling")
     except Exception as e:
-        logger.error(f"Error stopping polling: {e}")
+        logger.warning(f"Warning stopping polling: {e}")
 
 def signal_handler(sig, frame):
     """Handle shutdown signals gracefully."""
