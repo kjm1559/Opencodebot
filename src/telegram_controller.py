@@ -1484,6 +1484,12 @@ def handle_message(message):
         logger.info(f"Using existing session {current_session_id}")
         command_args = base_args + ["--session", current_session_id]
         stream_opencode_output(chat_id, command_args)
+    elif force_new_session:
+        logger.info("Force new session requested, skipping existing sessions")
+        command_args = base_args + ["--continue"]
+        escaped_message = escape_markdown_v2("Creating new session...")
+        bot.send_message(chat_id, escaped_message, parse_mode="MarkdownV2")
+        stream_opencode_output(chat_id, command_args)
     else:
         # Check if there are existing sessions to use instead of always creating a new one
         logger.info("No active session found, checking for existing sessions...")
