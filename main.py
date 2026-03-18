@@ -13,6 +13,7 @@ from src.telegram_controller import bot, logger, TELEGRAM_BOT_TOKEN, send_startu
 
 POLLING_TIMEOUT = 30
 POLLING_RETRY_DELAY = 5
+MAX_RETRY_DELAY = 300  # 5 minutes max delay
 
 def cleanup_processes():
     """Clean up all active subprocesses before shutdown."""
@@ -55,29 +56,40 @@ def main():
     send_startup_message()
     
     retry_count = 0
+    retry_delay = POLLING_RETRY_DELAY
+    
     while True:
         try:
             bot.infinity_polling(timeout=POLLING_TIMEOUT, long_polling_timeout=POLLING_TIMEOUT + 5)
+            
+            # Connection successful - reset retry counters
+            retry_count = 0
+            retry_delay = POLLING_RETRY_DELAY
+            
         except KeyboardInterrupt:
             logger.info("Bot stopped by user")
             cleanup_processes()
             break
+        except requests.exceptions.ConnectionError as e:
+            retry_count += 1
+            logger.warning(f"Connection error (attempt {retry_count}, delay {retry_delay}s): {e}")
+            
+            # Exponential backoff with cap
+            retry_delay = min(retry_delay * 2, MAX_RETRY_DELAY)
+            
+            logger.info(f"Waiting {retry_delay}s before reconnecting...")
+            time.sleep(retry_delay)
+            
         except requests.exceptions.ReadTimeout as e:
             retry_count += 1
             logger.warning(f"Read timeout (attempt {retry_count}): {e}")
-            if retry_count >= 10:
-                logger.error("Too many timeout failures, initiating shutdown")
-                cleanup_processes()
-                sys.exit(1)
-            time.sleep(POLLING_RETRY_DELAY)
-        except requests.exceptions.ConnectionError as e:
-            retry_count += 1
-            logger.warning(f"Connection error (attempt {retry_count}): {e}")
-            if retry_count >= 10:
-                logger.error("Too many connection failures, initiating shutdown")
-                cleanup_processes()
-                sys.exit(1)
-            time.sleep(POLLING_RETRY_DELAY)
+            
+            # Exponential backoff with cap
+            retry_delay = min(retry_delay * 2, MAX_RETRY_DELAY)
+            
+            logger.info(f"Waiting {retry_delay}s before retry...")
+            time.sleep(retry_delay)
+            
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             cleanup_processes()
