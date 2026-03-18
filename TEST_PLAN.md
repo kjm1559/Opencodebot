@@ -84,7 +84,7 @@ This document outlines a Test-Driven Development (TDD) approach for testing the 
 
 **Test Case:** Regular message flow no session
 - Input: Text message with no active session
-- Expected: Executes `opencode run --continue`, gets session list, sets latest as current
+- Expected: Executes `opencode run` (no flags, creates fresh session), gets session list, sets latest as current
 
 **Test Case:** Regular message flow with session
 - Input: Text message with active session

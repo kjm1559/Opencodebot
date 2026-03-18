@@ -99,7 +99,7 @@ Operations: set/get current session ID
 Expected: Session IDs stored/retrieved correctly per chat
 
 ### Complete Flow Test
-1. No session set → command: `opencode run --continue`
+1. No session set → command: `opencode run` (creates fresh session)
 2. Session set → command: `opencode run --session <id>`
 3. Post-execution: Get latest session and set it as current
 
