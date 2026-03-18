@@ -9,8 +9,16 @@ import re
 import json
 import subprocess
 import sys
-from typing import List, Dict, Any, Optional
+import os
+import json
+import subprocess
 import logging
+import shutil
+import threading
+import queue
+import time
+from datetime import datetime
+from typing import List, Optional, Dict, Any
 from logging.handlers import RotatingFileHandler
 import pathlib
 
@@ -72,6 +80,11 @@ logger = setup_logging()
 # Environment variables
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+
+# Process timeout and token limits
+PROCESS_TIMEOUT_SECONDS = 30 * 60  # 30 minutes
+TOKEN_WARNING_THRESHOLD = 50000  # Warn at 50K tokens
+TOKEN_TERMINATE_THRESHOLD = 80000  # Kill at 80K tokens
 
 # Bot setup
 if not TELEGRAM_BOT_TOKEN:
