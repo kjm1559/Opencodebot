@@ -1,0 +1,3 @@
+[submodule "k_is_mcp"]
+	path = k_is_mcp
+	url = https://github.com/migusdn/KIS_MCP_Server.git
