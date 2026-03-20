@@ -601,6 +601,31 @@ def stream_opencode_output(chat_id: str, command_args: List[str]) -> None:
 
                         logger.debug(f"Tool: {tool}, Status: {status}")
 
+                        if status == "error":
+                            logger.error(f"Tool {tool} failed - terminating process")
+                            process.terminate()
+                            try:
+                                process.wait(timeout=5)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait()
+
+                            bot.send_chat_action(chat_id, "typing")
+                            error_msg = escape_markdown_v2(f"❌ Tool Error: {tool} failed")
+                            try:
+                                bot.send_message(chat_id, error_msg, parse_mode="MarkdownV2")
+                                logger.warning(f"Sent termination error for {tool}")
+                            except Exception as e:
+                                logger.error(f"Failed to send termination error: {e}")
+
+                            bot.send_message(
+                                chat_id,
+                                escape_markdown_v2("━─━─━─━─━─━─━─━─\n✅ Completed (terminated)"),
+                                parse_mode="MarkdownV2",
+                            )
+                            logger.info("Process terminated early due to tool error")
+                            return
+
                         result = get_action_message(tool, status, part)
                         # Send tool action for completed/started/success
                         if result and status in ("completed", "started", "success"):
